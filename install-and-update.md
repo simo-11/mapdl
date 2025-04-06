@@ -6,9 +6,10 @@ Based on https://mapdl.docs.pyansys.com/version/stable/getting_started/index.htm
 C:\Users\simon\github\mapdl [main ≡]> uv venv --python 3.12.9
 C:\Users\simon\github\mapdl [main ≡]> .venv\Scripts\activate
 ```
- * install ansys-mapdl-core
+ * install ansys-mapdl-core and other needed modules
+ **   spyder-kernels is needed for spyder
 ```
-(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-mapdl-core
+(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-mapdl-core spyder-kernels==3.0.*
 ```
  * verify
 ```
@@ -32,6 +33,6 @@ Running on:          localhost
 # Update only python modules
 ```
 C:\Users\simon\github\mapdl [main ≡]> .venv\Scripts\activate
-(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install --upgrade ansys-mapdl-core
+(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install --upgrade same modules as above
 (mapdl) C:\Users\simon\github\mapdl [main ≡]> deactivate
 ```
