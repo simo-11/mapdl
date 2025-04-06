@@ -7,7 +7,7 @@ C:\Users\simon\github\mapdl [main ≡]> uv venv --python 3.12.9
 C:\Users\simon\github\mapdl [main ≡]> .venv\Scripts\activate
 ```
  * install ansys-mapdl-core and other needed modules
- **   spyder-kernels is needed for spyder
+   * spyder-kernels is needed for spyder
 ```
 (mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-mapdl-core spyder-kernels==3.0.*
 ```
@@ -26,7 +26,8 @@ Running on:          localhost
                      (127.0.0.1)
 >>> mapdl.exit()
 ```
- ** Started instance is shown in task manager like this  ![image](https://github.com/user-attachments/assets/429461d3-5bb1-4c9a-8858-f9d1ecc19cad)
+   * Started instance is shown in task manager like this  ![image](https://github.com/user-attachments/assets/429461d3-5bb1-4c9a-8858-f9d1ecc19cad)
+   * grpc version is shown as ANSYS242 in task manager
 
 # Update python
  
