@@ -1,5 +1,5 @@
 # mapdl
-Structural analysis using Ansys Mechanical Parametric Design Language.
+Structural analysis using Ansys Mechanical Parametric Design Language through python interface.
 
 # Target
  * Provide resusable reference cases for other areas of my interests
