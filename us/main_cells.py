@@ -10,27 +10,35 @@ Create, solve and report results using ansys models for cantilever U-section
 from ansys.mapdl import core as pymapdl
 import matplotlib.pyplot as plt
 import numpy as np
+import types
+import copy
+import re
+def pick_results():
+    mapdl.run("/solu")
+    mapdl.antype("static")
+    mapdl.solve()
+    r=mapdl.result
+    return types.SimpleNamespace(
+        mesh=copy.deepcopy(r.mesh), 
+        nodal_displacement=copy.deepcopy(r.nodal_displacement(0)))
+
+def get_sec_property(name):
+    m=re.search(f'{name}\\s*=\\s*([-+\\d\\.E]+)',secdata)
+    return float(m.group(1))
+
 h=0.1
 w=0.05
 t=0.004
 E=210E9
 nu=0.3
 sharp_corners=True
-do_plots=True
+do_plots=False
 if not do_plots:
     plt.close('all')
 L=2
 ndiv=20
 force=-1180
 force_y=t/2
-# moment for beam models must be set based on secdata
-# and location of force
-moment=None
-no_moment_defined="moment is not defined for current geometry"
-if h==0.1 and w == 0.05 and t == 0.004 and sharp_corners:
-    moment=force*(0.015869+force_y)
-else:
-    print(no_moment_defined)
 try:
     mapdl
 except NameError:
@@ -49,7 +57,7 @@ mapdl.mp("EX",1,E)
 mapdl.mp("PRXY",1,nu)
 secid=1
 mapdl.sectype(secid,"BEAM","CHAN","U",5)
-mapdl.secoffset("CENT")
+#mapdl.secoffset("SHRC")#CENT,SHRC,ORIGIN,USER
 secdata=mapdl.secdata(w,w,h,t,t,t)
 mapdl.k(1)
 mapdl.k(2,L)
@@ -67,30 +75,24 @@ print("Beam model created")
 mapdl.prep7()
 mapdl.fkdele('ALL','ALL')
 mapdl.fk(2,"FY",force)
-mapdl.run("/solu")
-mapdl.antype("static")
-mapdl.solve()
-r_bhf=mapdl.result
+r_bhf=pick_results()
 print("Horizontal load processed")
 # %% beam vertical force
+# add moment to cancel effect of torsion
+moment=-force*(
+    get_sec_property('Centroid Y')-get_sec_property('Shear Center Y'))
 mapdl.prep7()
 mapdl.fkdele('ALL','ALL')
 mapdl.fk(2,"FZ",force)
-mapdl.run("/solu")
-mapdl.antype("static")
-mapdl.solve()
-r_bvf=mapdl.result
+mapdl.fk(2,"MX",moment)
+r_bvf=pick_results()
 print("Vertical load processed")
-# %% beam torsion
-if moment is None:
-    raise Exception(no_moment_defined)
+# %% beam torsion if vertical load applied at force_y
+moment=force*(force_y-get_sec_property('Shear Center Y'))
 mapdl.prep7()
 mapdl.fkdele('ALL','ALL')
 mapdl.fk(2,"MX",moment)
-mapdl.run("/solu")
-mapdl.antype("static")
-mapdl.solve()
-r_bt=mapdl.result
+r_bt=pick_results()
 print("Torsional load processed")
 # %% plot results
 def get_sorted_node_numbers(result):
@@ -104,26 +106,36 @@ def plot_result(fig,ax,result,index,label):
     sorted_node_numbers=get_sorted_node_numbers(result)
     size=result.mesh.nnum.size
     xvs=result.mesh.nodes[:,0]
-    nd=result.nodal_displacement(0)[1][:,index]
+    nd=result.nodal_displacement[1][:,index]
     xv=np.zeros(size).tolist()
     yv=np.zeros(size).tolist()
     i=0
     for nn in sorted_node_numbers:
         ni=nn-1
         xv[i]=xvs[ni]
-        yv[i]=abs(nd[ni])
+        yv[i]=nd[ni]
         i=i+1
     ax.plot(xv,yv,label=label)
-    ax.legend()
+
+def add_analytical(ax,I):
+    xv=np.linspace(0,L)
+    yv=force*np.pow(L,3)/(6*E*I)*(2-3*(L-xv)/L+np.pow((L-xv)/L,3))
+    ax.plot(xv,yv,label='analytical')
+    
 fig_hf, ax_hf = plt.subplots(num='horizontal force',clear=True)
 ax_hf.set_xlabel(r'x-coordinate [m]')
 ax_hf.set_ylabel(r'horizontal displacement [m]')
-plot_result(fig_hf,ax_hf,r_bhf,1,'beam')
+plot_result(fig_hf,ax_hf,r_bhf,1,'beam188')
+add_analytical(ax_hf,get_sec_property('Izz'))
+ax_hf.legend()
 fig_vf, ax_vf = plt.subplots(num='vertical force',clear=True)
 ax_vf.set_xlabel(r'x-coordinate [m]')
 ax_vf.set_ylabel(r'vertical displacement [m]')
-plot_result(fig_vf,ax_vf,r_bvf,2,'beam')
+plot_result(fig_vf,ax_vf,r_bvf,2,'beam188')
+add_analytical(ax_vf,get_sec_property('Iyy'))
+ax_vf.legend()
 fig_t, ax_t = plt.subplots(num='torsion',clear=True)
 ax_t.set_ylabel(r'x-coordinate [m]')
 ax_t.set_ylabel(r'rotation [radians]')
-plot_result(fig_t,ax_t,r_bt,3,'beam')
+plot_result(fig_t,ax_t,r_bt,3,'beam188')
+ax_t.legend()
