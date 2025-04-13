@@ -2,7 +2,7 @@
 Structural analysis using Ansys Mechanical Parametric Design Language.
 
 # Target
- * Provide resusable reference case for other areas of my interests
+ * Provide resusable reference cases for other areas of my interests
 
 # starting grpc server
  * use suitable work directory which is listed in .gitignore
