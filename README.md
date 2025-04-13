@@ -5,9 +5,9 @@ Structural analysis using Ansys Mechanical Parametric Design Language through py
  * Provide resusable reference cases for other areas of my interests
 
 # starting grpc server
- * use suitable work directory which is listed in .gitignore
+ * use suitable work directory which is listed in .gitignore e.g. C:\Users\simon\github\mapdl\wrk
 ```
-C:\Users\simon\github\mapdl\wrk [main ≡]> start-process -FilePath 'C:\Program Files\ANSYS Inc\ANSYS Student\v242\ANSYS\bin\winx64\ANSYS242.exe' -ArgumentList "-grpc" -NoNewWindow
+ start-process -FilePath 'C:\Program Files\ANSYS Inc\ANSYS Student\v242\ANSYS\bin\winx64\ANSYS242.exe' -ArgumentList "-grpc" -NoNewWindow
 ```
 Port is shown in output window e.g. Server listening on : 0.0.0.0:50052
 
