@@ -31,6 +31,7 @@ w=0.05
 t=0.004
 E=210E9
 nu=0.3
+G=E/(2*(1+nu))
 sharp_corners=True
 do_plots=False
 if not do_plots:
@@ -41,8 +42,15 @@ force=-1180
 force_y=t/2
 try:
     mapdl
+    try:
+        mapdl.clear()
+    except pymapdl.errors.MapdlExitedError:
+        del mapdl        
 except NameError:
-    mapdl=pymapdl.Mapdl()
+    try:
+        mapdl=pymapdl.Mapdl(timeout=5)
+    except pymapdl.errors.MapdlConnectionError:
+        mapdl=pymapdl.launch_mapdl();
 print(f"U with h={h}, w={w}, t={t} defined, do_plots={do_plots}")
 # %% Beam model
 mapdl.clear()
@@ -117,25 +125,45 @@ def plot_result(fig,ax,result,index,label):
         i=i+1
     ax.plot(xv,yv,label=label)
 
-def add_analytical(ax,I):
+def add_analytical_bending(ax,I):
     xv=np.linspace(0,L)
     yv=force*np.pow(L,3)/(6*E*I)*(2-3*(L-xv)/L+np.pow((L-xv)/L,3))
+    ax.plot(xv,yv,label='analytical')
+
+def kc(It,Iw):
+    return np.sqrt((G*It)/(E*Iw))
+
+def theta(T,It,Iw,L,x):
+    k=kc(It,Iw)
+    c0=T/(k*G*It)
+    if np.tanh(k*L)==1:
+        y=c0*(np.exp(-k*x)-1+k*x)
+    else:
+        y=c0*((np.tanh(k*L)*(np.cosh(k*x)-1))-np.sinh(k*x)+k*x)
+    return y
+
+def add_analytical_torsion(ax,It,Iw):
+    xv=np.linspace(0,L)
+    yv=theta(moment,It,Iw,L,xv)
     ax.plot(xv,yv,label='analytical')
     
 fig_hf, ax_hf = plt.subplots(num='horizontal force',clear=True)
 ax_hf.set_xlabel(r'x-coordinate [m]')
 ax_hf.set_ylabel(r'horizontal displacement [m]')
 plot_result(fig_hf,ax_hf,r_bhf,1,'beam188')
-add_analytical(ax_hf,get_sec_property('Izz'))
+add_analytical_bending(ax_hf,get_sec_property('Izz'))
 ax_hf.legend()
 fig_vf, ax_vf = plt.subplots(num='vertical force',clear=True)
 ax_vf.set_xlabel(r'x-coordinate [m]')
 ax_vf.set_ylabel(r'vertical displacement [m]')
 plot_result(fig_vf,ax_vf,r_bvf,2,'beam188')
-add_analytical(ax_vf,get_sec_property('Iyy'))
+add_analytical_bending(ax_vf,get_sec_property('Iyy'))
 ax_vf.legend()
 fig_t, ax_t = plt.subplots(num='torsion',clear=True)
 ax_t.set_ylabel(r'x-coordinate [m]')
 ax_t.set_ylabel(r'rotation [radians]')
 plot_result(fig_t,ax_t,r_bt,3,'beam188')
+add_analytical_torsion(ax_t,
+                       get_sec_property('Torsion Constant'),
+                       get_sec_property('Warping Constant'))
 ax_t.legend()
