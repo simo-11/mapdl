@@ -7,7 +7,7 @@ Structural analysis using Ansys Mechanical Parametric Design Language through py
 # Update of python packages
 ```
 C:\Users\simon\github\mapdl [main ≡]> .venv\Scripts\activate
-(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-mapdl-core -U
+(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-mapdl-core[graphics] -U
 (mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-dpf-core -U
 ```
 # starting grpc server
