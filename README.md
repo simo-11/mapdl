@@ -30,3 +30,4 @@ In: mapdl=pymapdl.launch_mapdl()
 # References
  * https://www.ansys.com/blog/what-is-apdl
  * https://mapdl.docs.pyansys.com/
+ * https://ansyshelp.ansys.com/public/account/secured?returnurl=////Views/Secured/prod_page.html?pn=Mechanical%20APDL&prodver=24.2&lang=en
