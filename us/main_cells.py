@@ -8,7 +8,7 @@ Create, solve and report results using ansys models for cantilever
  * U-section
  * BOX
 """
-# %% settings and commons initializations
+# %% commons
 from ansys.mapdl import core as pymapdl
 import matplotlib.pyplot as plt
 import numpy as np
@@ -38,7 +38,21 @@ def pick_results():
 def get_sec_property(name):
     m=re.search(f'{name}\\s*=\\s*([-+\\d\\.E]+)',secdata)
     return float(m.group(1))
+
+if 'mapdl' in vars():
+    try:
+        mapdl.clear()#noqa
+    except pymapdl.errors.MapdlExitedError:
+        del mapdl        
+if not 'mapdl' in vars():
+    try:
+        mapdl=pymapdl.Mapdl(timeout=5)
+    except pymapdl.errors.MapdlConnectionError:
+        mapdl=pymapdl.launch_mapdl()
+
+# %% settings
 section=Section.BOX
+models=(Model.SOLID,)
 E=210E9
 L=2
 ndiv=20
@@ -62,23 +76,16 @@ match section.name:
 nu=0.3
 G=E/(2*(1+nu))
 sharp_corners=True
-do_plots=False
+do_plots=True
 if not do_plots:
     plt.close('all')
-if 'mapdl' in vars():
-    try:
-        mapdl.clear()#noqa
-    except pymapdl.errors.MapdlExitedError:
-        del mapdl        
-if not 'mapdl' in vars():
-    try:
-        mapdl=pymapdl.Mapdl(timeout=5)
-    except pymapdl.errors.MapdlConnectionError:
-        mapdl=pymapdl.launch_mapdl()
-print(f"""{section.name} with h={h}, w={w}, t={t} defined
-  E={E:.3G}, do_plots={do_plots}""")
-# %% Beam model
-# https://ansyshelp.ansys.com/public/account/secured?returnurl=////Views/Secured/corp/v242/en/ans_elem/Hlp_E_BEAM188.html
+print(f"""{section.name} with h={h}, w={w}, t={t} is active
+E={E:.3G}, nu={nu:.3G}
+models={models}
+do_plots={do_plots}
+pymapdl_version={mapdl.info._get_pymapdl_version()}""")
+# %% beam model
+# secdata is needed for analytical solution
 mapdl.clear()
 mapdl.prep7()
 mapdl.et(1,"BEAM188")
@@ -133,21 +140,21 @@ mapdl.lesize("ALL",ndiv=ndiv)
 mapdl.lmesh("ALL")
 mapdl.dk(kpoi=1,lab="ALL",value=0)
 if do_plots:
-    mapdl.nplot(vtk=True, nnum=True, cpos="xy",
+    mapdl.nplot(nnum=True, cpos="xy",
             plot_bc=True,plot_bc_legend=True,
             bc_labels="mechanical",
             show_bounds=True, point_size=10)
 print("Beam model created")
 # %% beam horizontal force
-if force:
+if force and Model.BEAM in models:
     mapdl.prep7()
     mapdl.fkdele('ALL','ALL')
     mapdl.fk(2,"FY",force)
     r_bhf=pick_results()
-    print("Horizontal load processed")
+    print("Horizontal load for beam processed")
 # %% beam vertical force
 # add moment to cancel effect of torsion
-if force:
+if force and Model.BEAM in models:
     moment=-force*(
         get_sec_property('Centroid Y')-get_sec_property('Shear Center Y'))
     mapdl.prep7()
@@ -155,15 +162,46 @@ if force:
     mapdl.fk(2,"FZ",force)
     mapdl.fk(2,"MX",moment)
     r_bvf=pick_results()
-    print("Vertical load processed")
-# %% beam torsion if vertical load applied at force_y
-if not moment:
-    moment=force*(force_y-get_sec_property('Shear Center Y'))
-mapdl.prep7()
-mapdl.fkdele('ALL','ALL')
-mapdl.fk(2,"MX",moment)
-r_bt=pick_results()
-print("Torsional load processed")
+    print("Vertical load for beam processed")
+# %% beam torsion 
+# if moment is not given, uses vertical load applied at force_y
+if Model.BEAM in models:
+    if not moment:
+        moment=force*(force_y-get_sec_property('Shear Center Y'))
+    mapdl.prep7()
+    mapdl.fkdele('ALL','ALL')
+    mapdl.fk(2,"MX",moment)
+    r_bt=pick_results()
+    print("Torsional load for beam processed")
+# %% Solid model
+if Model.SOLID in models:
+    # https://ansyshelp.ansys.com/public/account/secured?returnurl=/////Views/Secured/corp/v242/en/ans_elem/Hlp_E_SOLID187.html
+    mapdl.clear()
+    mapdl.prep7()
+    outer=mapdl.blc4(0,0,w,h,depth=L)
+    inner=mapdl.blc4(t,t,w-2*t,h-2*t,depth=L)
+    mapdl.vsbv(outer,inner,keep1='delete',keep2='delete')
+    if do_plots:
+        mapdl.vplot(show_lines=True, 
+                    line_width=5, 
+                    show_bounds=True, 
+                    cpos="iso")
+    mapdl.et(1,"SOLID187")
+    mapdl.mp("EX",1,E)
+    mapdl.mp("PRXY",1,nu)
+    mapdl.esize(5*t)
+    mapdl.vmesh('all')
+    mapdl.nsel("S", "LOC", "Z", 0, 0)
+    mapdl.d("ALL", "ALL", 0)
+    mapdl.allsel()
+    if do_plots:
+        mapdl.eplot()
+        mapdl.nplot(plot_bc=True)
+    print("Solid model created with "
+          +f"{mapdl.mesh.n_elem} elements and {mapdl.mesh.n_node} nodes")
+# %% torsion for solid 
+if Model.SOLID in models:
+    print("Torsional load for solid processed")
 # %% plot results
 def get_sorted_node_numbers(result):
     nnum=result.mesh.nnum
@@ -213,21 +251,24 @@ if force:
     fig_hf, ax_hf = plt.subplots(num='horizontal force',clear=True)
     ax_hf.set_xlabel(r'x-coordinate [m]')
     ax_hf.set_ylabel(r'horizontal displacement [m]')
-    plot_result(fig_hf,ax_hf,r_bhf,1,'beam188')
+    if 'r_bhf' in vars():
+        plot_result(fig_hf,ax_hf,r_bhf,1,'beam188')
     add_analytical_bending(ax_hf,get_sec_property('Izz'))
     ax_hf.legend()
 if force:    
     fig_vf, ax_vf = plt.subplots(num='vertical force',clear=True)
     ax_vf.set_xlabel(r'x-coordinate [m]')
     ax_vf.set_ylabel(r'vertical displacement [m]')
-    plot_result(fig_vf,ax_vf,r_bvf,2,'beam188')
+    if 'r_bvf' in vars():
+        plot_result(fig_vf,ax_vf,r_bvf,2,'beam188')
     add_analytical_bending(ax_vf,get_sec_property('Iyy'))
     ax_vf.legend()
 if moment:
     fig_t, ax_t = plt.subplots(num='torsion',clear=True)
     ax_t.set_ylabel(r'x-coordinate [m]')
     ax_t.set_ylabel(r'rotation [radians]')
-    plot_result(fig_t,ax_t,r_bt,3,'beam188')
+    if 'r_bt' in vars():
+        plot_result(fig_t,ax_t,r_bt,3,'beam188')
     add_analytical_torsion(ax_t,
                            get_sec_property('Torsion Constant'),
                            get_sec_property('Warping Constant'))
