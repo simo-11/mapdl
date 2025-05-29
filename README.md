@@ -5,6 +5,7 @@ Structural analysis using Ansys Mechanical Parametric Design Language through py
  * Provide resusable reference cases for other areas of my interests
 
 # starting grpc server
+grpc version can be started within python
  * use suitable work directory which is listed in .gitignore e.g. C:\Users\simon\github\mapdl\wrk
 ```
  start-process -FilePath 'C:\Program Files\ANSYS Inc\ANSYS Student\v242\ANSYS\bin\winx64\ANSYS242.exe' -ArgumentList "-grpc" -NoNewWindow
@@ -16,6 +17,8 @@ Tools/Preferences/Python interpreter github/mapdl/.venv/Scripts/python.exe
 ```
 In: from ansys.mapdl import core as pymapdl
 In: mapdl = pymapdl.Mapdl()
+or
+In: mapdl=pymapdl.launch_mapdl()
 ```
 
 # References
