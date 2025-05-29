@@ -4,6 +4,12 @@ Structural analysis using Ansys Mechanical Parametric Design Language through py
 # Target
  * Provide resusable reference cases for other areas of my interests
 
+# Update of python packages
+```
+C:\Users\simon\github\mapdl [main ≡]> .venv\Scripts\activate
+(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-mapdl-core -U
+(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-dpf-core -U
+```
 # starting grpc server
 grpc version can be started within python
  * use suitable work directory which is listed in .gitignore e.g. C:\Users\simon\github\mapdl\wrk
