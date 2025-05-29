@@ -20,6 +20,10 @@ import enum
 class Section(enum.Enum):
     U=1
     BOX=2
+
+class Model(enum.Enum):
+    BEAM=1
+    SOLID=2    
     
 def pick_results():
     mapdl.run("/solu")
@@ -70,7 +74,7 @@ if not 'mapdl' in vars():
     try:
         mapdl=pymapdl.Mapdl(timeout=5)
     except pymapdl.errors.MapdlConnectionError:
-        mapdl=pymapdl.launch_mapdl();
+        mapdl=pymapdl.launch_mapdl()
 print(f"""{section.name} with h={h}, w={w}, t={t} defined
   E={E:.3G}, do_plots={do_plots}""")
 # %% Beam model
