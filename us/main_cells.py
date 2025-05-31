@@ -54,7 +54,7 @@ if not 'mapdl' in vars():
 section=Section.BOX
 models=(Model.SOLID,)
 E=210E9
-L=2
+L=0.1
 ndiv=20
 match section.name:
     case "U":
@@ -79,7 +79,7 @@ sharp_corners=True
 do_plots=True
 if not do_plots:
     plt.close('all')
-print(f"""{section.name} with h={h}, w={w}, t={t} is active
+print(f"""{section.name} with h={h}, w={w}, t={t}, L={L} is active
 E={E:.3G}, nu={nu:.3G}
 models={models}
 do_plots={do_plots}
@@ -178,9 +178,16 @@ if Model.SOLID in models:
     # https://ansyshelp.ansys.com/public/account/secured?returnurl=/////Views/Secured/corp/v242/en/ans_elem/Hlp_E_SOLID187.html
     mapdl.clear()
     mapdl.prep7()
-    outer=mapdl.blc4(0,0,w,h,depth=L)
-    inner=mapdl.blc4(t,t,w-2*t,h-2*t,depth=L)
-    mapdl.vsbv(outer,inner,keep1='delete',keep2='delete')
+    match section.name:
+        case "U":
+            raise Exception(f'parameters for {section.name} are not defined')    
+        case "BOX":
+            outer=mapdl.blc4(0,0,w,h,depth=L)
+            inner=mapdl.blc4(t,t,w-2*t,h-2*t,depth=L)
+            mapdl.vsbv(outer,inner,keep1='delete',keep2='delete')
+            esize=100_000/((2*w/t+2*h/t)*L)
+        case _:
+            raise Exception(f'parameters for {section.name} are not defined')    
     if do_plots:
         mapdl.vplot(show_lines=True, 
                     line_width=5, 
@@ -189,14 +196,13 @@ if Model.SOLID in models:
     mapdl.et(1,"SOLID187")
     mapdl.mp("EX",1,E)
     mapdl.mp("PRXY",1,nu)
-    mapdl.esize(5*t)
+    mapdl.esize(esize)
     mapdl.vmesh('all')
     mapdl.nsel("S", "LOC", "Z", 0, 0)
     mapdl.d("ALL", "ALL", 0)
     mapdl.allsel()
     if do_plots:
-        mapdl.eplot()
-        mapdl.nplot(plot_bc=True)
+        mapdl.eplot(plot_bc=True)
     print("Solid model created with "
           +f"{mapdl.mesh.n_elem} elements and {mapdl.mesh.n_node} nodes")
 # %% torsion for solid 
