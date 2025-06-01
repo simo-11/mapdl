@@ -11,7 +11,7 @@ C:\Users\simon\github\mapdl [main ≡]> .venv\Scripts\activate
 (mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-dpf-core -U
 ```
 # starting grpc server
-grpc version can be started within python
+grpc version can be started within python. In that case ansys files like file.err and other will be %TEMP%\ansys_...
  * use suitable work directory which is listed in .gitignore e.g. C:\Users\simon\github\mapdl\wrk
 ```
  start-process -FilePath 'C:\Program Files\ANSYS Inc\ANSYS Student\v242\ANSYS\bin\winx64\ANSYS242.exe' -ArgumentList "-grpc" -NoNewWindow
