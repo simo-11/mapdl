@@ -45,17 +45,14 @@ if 'mapdl' in vars():
     except pymapdl.errors.MapdlExitedError:
         del mapdl        
 if not 'mapdl' in vars():
-    try:
-        mapdl=pymapdl.Mapdl(timeout=5)
-    except pymapdl.errors.MapdlConnectionError:
-        mapdl=pymapdl.launch_mapdl()
-
+    mapdl=pymapdl.launch_mapdl()
 # %% settings
 section=Section.BOX
 models=(Model.SOLID,)
 E=210E9
-L=0.1
+L=2
 ndiv=20
+master=0
 match section.name:
     case "U":
         h=0.1
@@ -76,7 +73,7 @@ match section.name:
 nu=0.3
 G=E/(2*(1+nu))
 sharp_corners=True
-do_plots=True
+do_plots=False
 if not do_plots:
     plt.close('all')
 print(f"""{section.name} with h={h}, w={w}, t={t}, L={L} is active
@@ -185,7 +182,7 @@ if Model.SOLID in models:
             outer=mapdl.blc4(0,0,w,h,depth=L)
             inner=mapdl.blc4(t,t,w-2*t,h-2*t,depth=L)
             mapdl.vsbv(outer,inner,keep1='delete',keep2='delete')
-            esize=100_000/((2*w/t+2*h/t)*L)
+            esize=np.pow(((2*w+2*h)*t*L)/1_000,1/3)
         case _:
             raise Exception(f'parameters for {section.name} are not defined')    
     if do_plots:
@@ -205,9 +202,43 @@ if Model.SOLID in models:
         mapdl.eplot(plot_bc=True)
     print("Solid model created with "
           +f"{mapdl.mesh.n_elem} elements and {mapdl.mesh.n_node} nodes")
-# %% torsion for solid 
+# %% torsion for solid using cerig
 if Model.SOLID in models:
+    mapdl.prep7()
+    mapdl.fkdele('ALL','ALL')
+    match section.name:
+        case "U":
+            raise Exception(f'parameters for {section.name} are not defined')    
+        case "BOX":
+            mapdl.cedele('all')
+            mapdl.nsel("S", "LOC", "Z", L, L)       
+            mapdl.nsel("R", "LOC", "X", w/2, w/2)       
+            mapdl.nsel("R", "LOC", "Y", h/2, h/2) 
+            mapdl.ndele('all')
+            mapdl.allsel()
+            mapdl.esel("S","ENAME","","MASS21")
+            mapdl.edele('ALL')
+            mapdl.allsel()
+            master=np.max(mapdl.mesh.nnum)+1
+            mapdl.n(master,w/2,h/2,L)
+            mapdl.et(2,'MASS21')
+            mapdl.type(2)
+            mapdl.tshap('POINT')
+            mapdl.r(1)
+            mapdl.e(master)
+            mapdl.nerr(nmerr=3,nmabt=1000_000)
+            mapdl.nsel("S", "LOC", "Z", L, L)
+            mapdl.cerig(master,'ALL',"UXYZ")
+            mapdl.f(master,"MZ",moment)
+            mapdl.allsel()
+        case _:
+            raise Exception(f'parameters for {section.name} are not defined')    
+    r_st=pick_results()
     print("Torsional load for solid processed")
+    if do_plots:
+        mapdl.post_processing.plot_nodal_displacement()
+        #disp = model.results.displacement().X()
+        #model.metadata.meshed_region.plot(disp.outputs.fields_container())
 # %% plot results
 def get_sorted_node_numbers(result):
     nnum=result.mesh.nnum
@@ -230,6 +261,22 @@ def plot_result(fig,ax,result,index,label):
         yv[i]=nd[ni]
         i=i+1
     ax.plot(xv,yv,label=label)
+
+def plot_solid_result(fig,ax,result,index,label):
+    sorted_node_numbers=get_sorted_node_numbers(result)
+    size=result.mesh.nnum.size
+    xvs=result.mesh.nodes[:,0]
+    nd=result.nodal_displacement[1][:,index]
+    xv=np.zeros(size).tolist()
+    yv=np.zeros(size).tolist()
+    i=0
+    for nn in sorted_node_numbers:
+        ni=nn-1
+        xv[i]=xvs[ni]
+        yv[i]=nd[ni]
+        i=i+1
+    ax.plot(xv,yv,label=label)
+
 
 def add_analytical_bending(ax,I):
     xv=np.linspace(0,L)
@@ -275,6 +322,8 @@ if moment:
     ax_t.set_ylabel(r'rotation [radians]')
     if 'r_bt' in vars():
         plot_result(fig_t,ax_t,r_bt,3,'beam188')
+    if 'r_st' in vars():
+        plot_solid_result(fig_t,ax_t,r_st,5,'solid187')
     add_analytical_torsion(ax_t,
                            get_sec_property('Torsion Constant'),
                            get_sec_property('Warping Constant'))
