@@ -10,6 +10,7 @@ Create, solve and report results using ansys models for cantilever
 """
 # %% commons
 from ansys.mapdl import core as pymapdl
+from ansys.dpf import core as dpf
 import matplotlib.pyplot as plt
 import numpy as np
 import types
@@ -236,9 +237,12 @@ if Model.SOLID in models:
     r_st=pick_results()
     print("Torsional load for solid processed")
     if do_plots:
-        mapdl.post_processing.plot_nodal_displacement()
-        #disp = model.results.displacement().X()
-        #model.metadata.meshed_region.plot(disp.outputs.fields_container())
+        model = dpf.Model(mapdl.result_file)
+        disp = model.results.displacement()
+        mesh=model.metadata.meshed_region
+        fields_container = disp.outputs.fields_container()
+        field = fields_container[0]
+        mesh.plot(field,deform_by=disp, scale_factor=5.)
 # %% plot results
 def get_sorted_node_numbers(result):
     nnum=result.mesh.nnum
