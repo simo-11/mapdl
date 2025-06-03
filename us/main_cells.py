@@ -11,6 +11,7 @@ Create, solve and report results using ansys models for cantilever
 # %% commons
 from ansys.mapdl import core as pymapdl
 from ansys.dpf import core as dpf
+from ansys.dpf import post
 import matplotlib.pyplot as plt
 import numpy as np
 import types
@@ -243,6 +244,9 @@ if Model.SOLID in models:
         fields_container = disp.outputs.fields_container()
         field = fields_container[0]
         mesh.plot(field,deform_by=disp, scale_factor=5.)
+        sim=post.load_simulation(mapdl.result_file)
+        displacement = sim.displacement()
+        displacement.plot()
 # %% plot results
 def get_sorted_node_numbers(result):
     nnum=result.mesh.nnum
@@ -267,6 +271,7 @@ def plot_result(fig,ax,result,index,label):
     ax.plot(xv,yv,label=label)
 
 def plot_solid_result(fig,ax,result,index,label):
+    raise Exception("Not done")
     sorted_node_numbers=get_sorted_node_numbers(result)
     size=result.mesh.nnum.size
     xvs=result.mesh.nodes[:,0]
@@ -326,7 +331,7 @@ if moment:
     ax_t.set_ylabel(r'rotation [radians]')
     if 'r_bt' in vars():
         plot_result(fig_t,ax_t,r_bt,3,'beam188')
-    if 'r_st' in vars():
+    if 'r_st' in vars() and False:
         plot_solid_result(fig_t,ax_t,r_st,5,'solid187')
     add_analytical_torsion(ax_t,
                            get_sec_property('Torsion Constant'),
