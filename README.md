@@ -9,6 +9,7 @@ Structural analysis using Ansys Mechanical Parametric Design Language through py
 C:\Users\simon\github\mapdl [main ≡]> .venv\Scripts\activate
 (mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-mapdl-core[graphics] -U
 (mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-dpf-core -U
+(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-dpf-post[plotting] -U
 ```
 # starting grpc server
 grpc version can be started within python. In that case ansys files like file.err and other will be %TEMP%\ansys_...
@@ -30,5 +31,8 @@ In: mapdl=pymapdl.launch_mapdl()
 # References
  * https://www.ansys.com/blog/what-is-apdl
  * https://mapdl.docs.pyansys.com/
+ * https://math.docs.pyansys.com/
  * https://dpf.docs.pyansys.com/
+ * https://post.docs.pyansys.com/version/stable/
  * https://ansyshelp.ansys.com/public/account/secured?returnurl=////Views/Secured/prod_page.html?pn=Mechanical%20APDL&prodver=24.2&lang=en
+ * https://docs.pyvista.org/
