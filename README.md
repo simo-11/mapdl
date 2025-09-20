@@ -34,5 +34,5 @@ In: mapdl=pymapdl.launch_mapdl()
  * https://math.docs.pyansys.com/
  * https://dpf.docs.pyansys.com/
  * https://post.docs.pyansys.com/version/stable/
- * https://ansyshelp.ansys.com/public/account/secured?returnurl=////Views/Secured/prod_page.html?pn=Mechanical%20APDL&prodver=24.2&lang=en
+ * https://ansyshelp.ansys.com/public/account/secured?returnurl=////Views/Secured/prod_page.html?pn=Mechanical%20APDL&prodver=25.2&lang=en
  * https://docs.pyvista.org/
