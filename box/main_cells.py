@@ -4,11 +4,10 @@ Created on Mon Apr  7 10:48:02 2025
 
 @author: simo nikula
 
-Create, solve and report results using ansys models for cantilever 
- * U-section
- * BOX
+Create, solve and report results using ansys models for cantilever BOX
 """
 # %% commons
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from ansys.mapdl import core as pymapdl
 from ansys.dpf import core as dpf
 from ansys.dpf import post
@@ -18,68 +17,107 @@ import types
 import copy
 import re
 import enum
-
-class Section(enum.Enum):
-    U=1
-    BOX=2
-
+import psutil    
+import time
 class Model(enum.Enum):
     BEAM=1
-    SOLID=2    
+    SOLID=2
+
+def kill_mapdl_processes():
+    for proc in psutil.process_iter(['pid', 'name']):
+        if 'ansys' in proc.info['name'].lower():
+            print(f"Killing PID {proc.info['pid']}, {proc.info['name']}")
+            proc.kill()
+
+def wait_for_shutdown(timeout=5):
+    start = time.time()
+    while time.time() - start < timeout:
+        still_running = any('ansys' in p.info['name'].lower()
+                            for p in psutil.process_iter(['name']))
+        if not still_running:
+            print("MAPDL shutdown confirmed.")
+            return True
+        time.sleep(0.5)
+    print("Timeout reached — MAPDL may still be running.")
+    return False
+
+
+def stop_ansys():
+    if 'mapdl' in vars():
+        # Step 1: Try graceful shutdown
+        try:
+            if mapdl.is_alive:
+                mapdl.exit()
+                del mapdl
+        except Exception as e:
+            print(f"Graceful exit failed: {e}")
+            del mapdl
+    # Step 2: Wait and verify
+    if not wait_for_shutdown(timeout=5):
+        # Step 3: Force kill if needed
+        kill_mapdl_processes()  
     
 def pick_results():
     mapdl.run("/solu")
     mapdl.antype("static")
     mapdl.nlgeom(key="on")
     mapdl.solve()
-    r=mapdl.result
+    mapdl.post1()
+    mapdl.set(1)
     return types.SimpleNamespace(
-        mesh=copy.deepcopy(r.mesh), 
-        nodal_displacement=copy.deepcopy(r.nodal_displacement(0)))
+        nnum=copy.deepcopy(mapdl.mesh.nnum),
+        coords=copy.deepcopy(mapdl.mesh.nodes),
+        nodal_displacement=copy.deepcopy(mapdl.result.nodal_displacement(0)))
 
 def get_sec_property(name):
     m=re.search(f'{name}\\s*=\\s*([-+\\d\\.E]+)',secdata)
     return float(m.group(1))
 
+
+def check_mapdl(mapdl):
+    return mapdl.version  # Lightweight ping
+
 if 'mapdl' in vars():
     try:
-        mapdl.clear()#noqa
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(check_mapdl, mapdl)#noqa
+            try:
+                version = future.result(timeout=2)
+                mapdl.clear()#noqa
+                print(f"MAPDL is alive. Version: {version}")
+            except TimeoutError:
+                print("MAPDL check timed out after 2 seconds.")
+                del mapdl
+            except Exception as e:
+                print(f"MAPDL check failed: {e}")
+                del mapdl
     except pymapdl.errors.MapdlExitedError:
-        del mapdl        
+        del mapdl
 if not 'mapdl' in vars():
     mapdl=pymapdl.launch_mapdl()
+    version=mapdl.version
+    print(f"MAPDL lauched. Version: {version}")
 # %% settings
-section=Section.BOX
 models=(Model.BEAM,)
 E=210E9
 L=2
 ndiv=20
 master=0
 rotation_in_degress=True
-match section.name:
-    case "U":
-        h=0.1
-        w=0.05
-        t=0.004
-        force=-1180
-        force_y=t/2
-        moment=None
-    case "BOX":
-        E=1E9
-        h=0.08
-        w=0.16
-        t=0.01
-        moment=1000
-        force=None
-    case _:
-        raise Exception(f'parameters for {section.name} are not defined')    
+E=1E9
+h=0.08
+w=0.16
+t=0.01
+moment=1000
+force=None
+force_y=None
 nu=0.3
 G=E/(2*(1+nu))
 sharp_corners=True
 do_plots=False
 if not do_plots:
     plt.close('all')
-print(f"""{section.name} with h={h}, w={w}, t={t}, L={L} is active
+print(f"""BOX with h={h}, w={w}, t={t}, L={L} is active
 E={E:.3G}, nu={nu:.3G}
 models={models}
 do_plots={do_plots}
@@ -123,16 +161,8 @@ mapdl.keyopt(1,1,1)
 mapdl.mp("EX",1,E)
 mapdl.mp("PRXY",1,nu)
 secid=1
-match section.name:
-    case "U":
-        mapdl.sectype(secid,"BEAM","CHAN",section.name,5)
-        #mapdl.secoffset("SHRC")#CENT,SHRC,ORIGIN,USER
-        secdata=mapdl.secdata(w,w,h,t,t,t)
-    case "BOX":
-        mapdl.sectype(secid,"BEAM","HREC",section.name,5)
-        secdata=mapdl.secdata(w,h,t,t,t,t)
-    case _:
-        raise Exception(f'parameters for {section.name} are not defined')    
+mapdl.sectype(secid,"BEAM","HREC",'BOX',5)
+secdata=mapdl.secdata(w,h,t,t,t,t)
 mapdl.k(1)
 mapdl.k(2,L)
 mapdl.lstr(1,2)
@@ -149,7 +179,7 @@ print("Beam model created")
 if force and Model.BEAM in models:
     mapdl.prep7()
     mapdl.fkdele('ALL','ALL')
-    mapdl.fk(2,"FY",force)
+    mapdl.fk(2,"FY",force_y)
     r_bhf=pick_results()
     print("Horizontal load for beam processed")
 # %% beam vertical force
@@ -178,16 +208,10 @@ if Model.SOLID in models:
     # https://ansyshelp.ansys.com/public/account/secured?returnurl=/////Views/Secured/corp/v242/en/ans_elem/Hlp_E_SOLID187.html
     mapdl.clear()
     mapdl.prep7()
-    match section.name:
-        case "U":
-            raise Exception(f'parameters for {section.name} are not defined')    
-        case "BOX":
-            outer=mapdl.blc4(0,0,w,h,depth=L)
-            inner=mapdl.blc4(t,t,w-2*t,h-2*t,depth=L)
-            mapdl.vsbv(outer,inner,keep1='delete',keep2='delete')
-            esize=np.pow(((2*w+2*h)*t*L)/1_000,1/3)
-        case _:
-            raise Exception(f'parameters for {section.name} are not defined')    
+    outer=mapdl.blc4(0,0,w,h,depth=L)
+    inner=mapdl.blc4(t,t,w-2*t,h-2*t,depth=L)
+    mapdl.vsbv(outer,inner,keep1='delete',keep2='delete')
+    esize=np.pow(((2*w+2*h)*t*L)/1_000,1/3)
     if do_plots:
         mapdl.vplot(show_lines=True, 
                     line_width=5, 
@@ -209,33 +233,27 @@ if Model.SOLID in models:
 if Model.SOLID in models:
     mapdl.prep7()
     mapdl.fkdele('ALL','ALL')
-    match section.name:
-        case "U":
-            raise Exception(f'parameters for {section.name} are not defined')    
-        case "BOX":
-            mapdl.cedele('all')
-            mapdl.nsel("S", "LOC", "Z", L, L)       
-            mapdl.nsel("R", "LOC", "X", w/2, w/2)       
-            mapdl.nsel("R", "LOC", "Y", h/2, h/2) 
-            mapdl.ndele('all')
-            mapdl.allsel()
-            mapdl.esel("S","ENAME","","MASS21")
-            mapdl.edele('ALL')
-            mapdl.allsel()
-            master=np.max(mapdl.mesh.nnum)+1
-            mapdl.n(master,w/2,h/2,L)
-            mapdl.et(2,'MASS21')
-            mapdl.type(2)
-            mapdl.tshap('POINT')
-            mapdl.r(1)
-            mapdl.e(master)
-            mapdl.nerr(nmerr=3,nmabt=1000_000)
-            mapdl.nsel("S", "LOC", "Z", L, L)
-            mapdl.cerig(master,'ALL',"UXYZ")
-            mapdl.f(master,"MZ",moment)
-            mapdl.allsel()
-        case _:
-            raise Exception(f'parameters for {section.name} are not defined')    
+    mapdl.cedele('all')
+    mapdl.nsel("S", "LOC", "Z", L, L)       
+    mapdl.nsel("R", "LOC", "X", w/2, w/2)       
+    mapdl.nsel("R", "LOC", "Y", h/2, h/2) 
+    mapdl.ndele('all')
+    mapdl.allsel()
+    mapdl.esel("S","ENAME","","MASS21")
+    mapdl.edele('ALL')
+    mapdl.allsel()
+    master=np.max(mapdl.mesh.nnum)+1
+    mapdl.n(master,w/2,h/2,L)
+    mapdl.et(2,'MASS21')
+    mapdl.type(2)
+    mapdl.tshap('POINT')
+    mapdl.r(1)
+    mapdl.e(master)
+    mapdl.nerr(nmerr=3,nmabt=1000_000)
+    mapdl.nsel("S", "LOC", "Z", L, L)
+    mapdl.cerig(master,'ALL',"UXYZ")
+    mapdl.f(master,"MZ",moment)
+    mapdl.allsel()
     r_st=pick_results()
     print("Torsional load for solid processed")
     if do_plots:
@@ -257,19 +275,22 @@ def get_sorted_node_numbers(result):
     return ss
 
 def plot_result(fig,ax,result,index,label):
-    sorted_node_numbers=get_sorted_node_numbers(result)
-    size=result.mesh.nnum.size
-    xvs=result.mesh.nodes[:,0]
-    nd=result.nodal_displacement[1][:,index]
-    xv=np.zeros(size).tolist()
-    yv=np.zeros(size).tolist()
-    i=0
-    for nn in sorted_node_numbers:
-        ni=nn-1
-        xv[i]=xvs[ni]
-        yv[i]=nd[ni]
-        i=i+1
-    ax.plot(xv,yv,label=label)
+    nnum =result.nnum
+    disp = result.nodal_displacement  # disp shape: (n_nodes, 7)
+    # Get coordinates
+    coords = result.coords  # shape: (n_nodes, 3)
+    # Extract X and ROTX (index 3), convert to degrees
+    x_rotx = []
+    for i, node in enumerate(nnum):
+        x = coords[i][0]
+        rotx_rad = disp[i][3]
+        rotx_deg = rotx_rad * (180 / np.pi)
+        x_rotx.append((x, rotx_deg))  
+    # Sort by X
+    x_rotx_sorted = sorted(x_rotx, key=lambda pair: pair[0])
+    x_vals, rotx_vals = zip(*x_rotx_sorted)
+    # Plot
+    ax.plot(x_vals, rotx_vals, label=label)
 
 def plot_solid_result(fig,ax,result,index,label):
     raise Exception("Not done")
