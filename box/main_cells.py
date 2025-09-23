@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from ansys.mapdl import core as pymapdl
 from ansys.dpf import core as dpf
 from ansys.dpf import post
+from ansys.dpf.core import operators
 import matplotlib.pyplot as plt
 import numpy as np
 import types
@@ -43,12 +44,11 @@ def wait_for_shutdown(timeout=5):
 
 
 def stop_ansys():
-    if 'mapdl' in vars():
+    if 'mapdl' in globals():
         # Step 1: Try graceful shutdown
         try:
-            if mapdl.is_alive:
-                mapdl.exit()
-                del mapdl
+            mapdl.exit()
+            del mapdl
         except Exception as e:
             print(f"Graceful exit failed: {e}")
             del mapdl
@@ -57,17 +57,29 @@ def stop_ansys():
         # Step 3: Force kill if needed
         kill_mapdl_processes()  
     
-def pick_results():
+def pick_results(mapdl):
     mapdl.run("/solu")
     mapdl.antype("static")
     mapdl.nlgeom(key="on")
     mapdl.solve()
-    mapdl.post1()
-    mapdl.set(1)
-    return types.SimpleNamespace(
-        nnum=copy.deepcopy(mapdl.mesh.nnum),
-        coords=copy.deepcopy(mapdl.mesh.nodes),
-        nodal_displacement=copy.deepcopy(mapdl.result.nodal_displacement(0)))
+    mapdl.finish()
+    model = dpf.Model(mapdl.result_file)
+    mesh = model.metadata.meshed_region
+    disp_fc = model.results.displacement().eval()  # FieldsContainer
+    disp_field = disp_fc[0]  # Ensimmäinen kuormitustapa
+    disp_data = disp_field.data  # NumPy-taulukko: shape (n_nodes, 3)
+    # Hae solmujen koordinaatit
+    coord_op = operators.mesh.node_coordinates()
+    coord_op.inputs.mesh.connect(mesh)
+    coord_field = coord_op.outputs["coordinates"]  # Field
+    node_coords = coord_field.data  # shape: (n_nodes, 3)
+    node_ids = coord_field.scoping.ids  # esim. [1, 2, 3, ...]    
+    sns=types.SimpleNamespace(
+        nnum=copy.deepcopy(node_ids),
+        coords=copy.deepcopy(node_coords),
+        displacement=copy.deepcopy(disp_data)
+        )
+    return sns
 
 def get_sec_property(name):
     m=re.search(f'{name}\\s*=\\s*([-+\\d\\.E]+)',secdata)
@@ -75,16 +87,16 @@ def get_sec_property(name):
 
 
 def check_mapdl(mapdl):
-    return mapdl.version  # Lightweight ping
+    return mapdl.is_alive  # Lightweight ping
 
-if 'mapdl' in vars():
+if 'mapdl' in globals():
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(check_mapdl, mapdl)#noqa
             try:
-                version = future.result(timeout=2)
+                is_alive = future.result(timeout=2)
                 mapdl.clear()#noqa
-                print(f"MAPDL is alive. Version: {version}")
+                print(f"MAPDL is alive. Version: {mapdl.version}")#noqa
             except TimeoutError:
                 print("MAPDL check timed out after 2 seconds.")
                 del mapdl
@@ -93,10 +105,11 @@ if 'mapdl' in vars():
                 del mapdl
     except pymapdl.errors.MapdlExitedError:
         del mapdl
-if not 'mapdl' in vars():
+if not 'mapdl' in globals():
     mapdl=pymapdl.launch_mapdl()
     version=mapdl.version
     print(f"MAPDL lauched. Version: {version}")
+# %% debug functions
 # %% settings
 models=(Model.BEAM,)
 E=210E9
@@ -174,13 +187,14 @@ if do_plots:
             plot_bc=True,plot_bc_legend=True,
             bc_labels="mechanical",
             show_bounds=True, point_size=10)
+mapdl.finish()
 print("Beam model created")
 # %% beam horizontal force
-if force and Model.BEAM in models:
+if force_y and Model.BEAM in models:
     mapdl.prep7()
     mapdl.fkdele('ALL','ALL')
     mapdl.fk(2,"FY",force_y)
-    r_bhf=pick_results()
+    r_bhf=pick_results(mapdl)
     print("Horizontal load for beam processed")
 # %% beam vertical force
 # add moment to cancel effect of torsion
@@ -201,7 +215,7 @@ if Model.BEAM in models:
     mapdl.prep7()
     mapdl.fkdele('ALL','ALL')
     mapdl.fk(2,"MX",moment)
-    r_bt=pick_results()
+    r_bt=pick_results(mapdl)
     print("Torsional load for beam processed")
 # %% Solid model
 if Model.SOLID in models:
