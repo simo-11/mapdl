@@ -56,24 +56,22 @@ def stop_ansys():
     if not wait_for_shutdown(timeout=5):
         # Step 3: Force kill if needed
         kill_mapdl_processes()  
-    
+
+"""
+rotations are not supported in 0.14 (stable as of 2025-09)
+so getting results using legacy methods
+"""  
 def pick_results(mapdl):
     mapdl.run("/solu")
     mapdl.antype("static")
     mapdl.nlgeom(key="on")
     mapdl.solve()
     mapdl.finish()
-    model = dpf.Model(mapdl.result_file)
-    mesh = model.metadata.meshed_region
-    disp_fc = model.results.displacement().eval()  # FieldsContainer
-    disp_field = disp_fc[0]  # Ensimmäinen kuormitustapa
-    disp_data = disp_field.data  # NumPy-taulukko: shape (n_nodes, 3)
-    # Hae solmujen koordinaatit
-    coord_op = operators.mesh.node_coordinates()
-    coord_op.inputs.mesh.connect(mesh)
-    coord_field = coord_op.outputs["coordinates"]  # Field
-    node_coords = coord_field.data  # shape: (n_nodes, 3)
-    node_ids = coord_field.scoping.ids  # esim. [1, 2, 3, ...]    
+    mapdl.post1()
+    mapdl.set(1)
+    node_ids=mapdl.mesh.nnum
+    node_coords=mapdl.mesh.nodes
+    disp_data=mapdl.result.nodal_displacement(0)
     sns=types.SimpleNamespace(
         nnum=copy.deepcopy(node_ids),
         coords=copy.deepcopy(node_coords),
