@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from ansys.mapdl import core as pymapdl
 from ansys.dpf import core as dpf
 from ansys.dpf import post
-from ansys.dpf.core import operators
+from ansys.dpf.core import operators#noqa
 import matplotlib.pyplot as plt
 import numpy as np
 import types
