@@ -31,6 +31,8 @@ In: mapdl=pymapdl.launch_mapdl()
 # References
  * https://www.ansys.com/blog/what-is-apdl
  * https://mapdl.docs.pyansys.com/
+ * https://pypi.org/project/ansys-mapdl-reader/
+   * /FCOMP,RST,0 hinted here and is needed in beam cases as dpf does not yet support rotations and warping
  * https://math.docs.pyansys.com/
  * https://dpf.docs.pyansys.com/
  * https://post.docs.pyansys.com/version/stable/
