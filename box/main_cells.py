@@ -45,6 +45,7 @@ def wait_for_shutdown(timeout=5):
 
 def stop_ansys():
     if 'mapdl' in globals():
+        global mapdl
         # Step 1: Try graceful shutdown
         try:
             mapdl.exit()
@@ -63,15 +64,15 @@ so getting results using legacy methods
 """  
 def pick_results(mapdl):
     mapdl.run("/solu")
+    mapdl.run("outres,all,all")
     mapdl.antype("static")
     mapdl.nlgeom(key="on")
     mapdl.solve()
     mapdl.finish()
     mapdl.post1()
-    mapdl.set(1)
-    node_ids=mapdl.mesh.nnum
+    mapdl.set(1,1)
     node_coords=mapdl.mesh.nodes
-    disp_data=mapdl.result.nodal_displacement(0)
+    node_ids,disp_data=mapdl.result.nodal_displacement(0)
     sns=types.SimpleNamespace(
         nnum=copy.deepcopy(node_ids),
         coords=copy.deepcopy(node_coords),
@@ -85,30 +86,37 @@ def get_sec_property(name):
 
 
 def check_mapdl(mapdl):
-    return mapdl.is_alive  # Lightweight ping
+    return mapdl.is_alive
 
-if 'mapdl' in globals():
+def check_global_mapdl():
+    global mapdl
+    if not 'mapdl' in globals():
+        print("global mapdl is not defined")
+        return
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(check_mapdl, mapdl)#noqa
             try:
                 is_alive = future.result(timeout=2)
-                mapdl.clear()#noqa
-                print(f"MAPDL is alive. Version: {mapdl.version}")#noqa
+                if is_alive:
+                    mapdl.clear()#noqa
+                    print(f"MAPDL is alive. Version: {mapdl.version}")#noqa
             except TimeoutError:
                 print("MAPDL check timed out after 2 seconds.")
                 del mapdl
             except Exception as e:
                 print(f"MAPDL check failed: {e}")
-                del mapdl
+                del globals()['mapdl']
     except pymapdl.errors.MapdlExitedError:
-        del mapdl
+        del globals()['mapdl']
+
+check_global_mapdl()
+
 if not 'mapdl' in globals():
     mapdl=pymapdl.launch_mapdl()
+    mapdl.run("/FCOMP,RST,0")
     version=mapdl.version
     print(f"MAPDL lauched. Version: {version}")
-# %% debug functions
-# %% settings
 models=(Model.BEAM,)
 E=210E9
 L=2
@@ -133,6 +141,7 @@ E={E:.3G}, nu={nu:.3G}
 models={models}
 do_plots={do_plots}
 pymapdl_version={mapdl.info._get_pymapdl_version()}""")
+# %% debug functions
 # %% beam model
 # secdata is needed for analytical solution
 mapdl.clear()
@@ -288,7 +297,7 @@ def get_sorted_node_numbers(result):
 
 def plot_result(fig,ax,result,index,label):
     nnum =result.nnum
-    disp = result.nodal_displacement  # disp shape: (n_nodes, 7)
+    disp = result.displacement  # disp shape: (n_nodes, 7)
     # Get coordinates
     coords = result.coords  # shape: (n_nodes, 3)
     # Extract X and ROTX (index 3), convert to degrees
