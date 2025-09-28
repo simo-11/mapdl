@@ -24,43 +24,10 @@ class Model(enum.Enum):
     BEAM=1
     SOLID=2
 
-def kill_mapdl_processes():
-    for proc in psutil.process_iter(['pid', 'name']):
-        if 'ansys' in proc.info['name'].lower():
-            print(f"Killing PID {proc.info['pid']}, {proc.info['name']}")
-            proc.kill()
-
-def wait_for_shutdown(timeout=5):
-    start = time.time()
-    while time.time() - start < timeout:
-        still_running = any('ansys' in p.info['name'].lower()
-                            for p in psutil.process_iter(['name']))
-        if not still_running:
-            print("MAPDL shutdown confirmed.")
-            return True
-        time.sleep(0.5)
-    print("Timeout reached — MAPDL may still be running.")
-    return False
-
-
-def stop_ansys():
-    if 'mapdl' in globals():
-        global mapdl
-        # Step 1: Try graceful shutdown
-        try:
-            mapdl.exit()
-            del mapdl
-        except Exception as e:
-            print(f"Graceful exit failed: {e}")
-            del mapdl
-    # Step 2: Wait and verify
-    if not wait_for_shutdown(timeout=5):
-        # Step 3: Force kill if needed
-        kill_mapdl_processes()  
-
 """
 rotations are not supported in 0.14 (stable as of 2025-09)
-so getting results using legacy methods
+so getting results using legacy methods from 
+uncompressed results file requested using /fcomp,rst,0
 """  
 def pick_results(mapdl):
     mapdl.run("/solu")
@@ -88,27 +55,59 @@ def get_sec_property(name):
 def check_mapdl(mapdl):
     return mapdl.is_alive
 
+def kill_mapdl_processes():
+    for proc in psutil.process_iter(['pid', 'name']):
+        if 'ansys' in proc.info['name'].lower():
+            print(f"Killing PID {proc.info['pid']}, {proc.info['name']}")
+            proc.kill()
+
+def wait_for_shutdown(timeout=5):
+    start = time.time()
+    while time.time() - start < timeout:
+        still_running = any('ansys' in p.info['name'].lower()
+                            for p in psutil.process_iter(['name']))
+        if not still_running:
+            print("MAPDL shutdown confirmed.")
+            return True
+        time.sleep(0.5)
+    print("Timeout reached — MAPDL may still be running.")
+    return False
+
+def stop_ansys():
+    if 'mapdl' in globals():
+        global mapdl
+        # Step 1: Try graceful shutdown
+        try:
+            mapdl.exit()
+        except Exception as e:
+            print(f"Graceful exit failed: {e}")
+    # Step 2: Wait and verify
+    if not wait_for_shutdown(timeout=5):
+        # Step 3: Force kill if needed
+        kill_mapdl_processes()
+    del globals()['mapdl']
+
 def check_global_mapdl():
-    global mapdl
     if not 'mapdl' in globals():
         print("global mapdl is not defined")
         return
-    try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(check_mapdl, mapdl)#noqa
-            try:
-                is_alive = future.result(timeout=2)
-                if is_alive:
-                    mapdl.clear()#noqa
-                    print(f"MAPDL is alive. Version: {mapdl.version}")#noqa
-            except TimeoutError:
-                print("MAPDL check timed out after 2 seconds.")
-                del mapdl
-            except Exception as e:
-                print(f"MAPDL check failed: {e}")
-                del globals()['mapdl']
-    except pymapdl.errors.MapdlExitedError:
-        del globals()['mapdl']
+    global mapdl
+    timeout=2
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(check_mapdl, mapdl)#noqa
+        try:
+            is_alive = future.result(timeout=timeout)
+            if is_alive:
+                mapdl.clear()#noqa
+                print(f"MAPDL is alive. Version: {mapdl.version}")#noqa
+                return
+        except TimeoutError:
+            print(f"MAPDL check timed out after {timeout} seconds.")
+        except Exception as e:
+            print(f"MAPDL check failed: {e}")
+        except pymapdl.errors.MapdlExitedError as e:
+                print(f"MAPDL check exited: {e}")
+    stop_ansys()
 
 check_global_mapdl()
 
@@ -120,7 +119,7 @@ if not 'mapdl' in globals():
 models=(Model.BEAM,)
 E=210E9
 L=2
-ndiv=20
+ndiv=50
 master=0
 rotation_in_degress=True
 E=1E9
@@ -186,7 +185,7 @@ secdata=mapdl.secdata(w,h,t,t,t,t)
 mapdl.k(1)
 mapdl.k(2,L)
 mapdl.lstr(1,2)
-mapdl.lesize("ALL",ndiv=ndiv)
+mapdl.lesize("ALL",ndiv=ndiv,space=20)
 mapdl.lmesh("ALL")
 mapdl.dk(kpoi=1,lab="ALL",value=0)
 if do_plots:
