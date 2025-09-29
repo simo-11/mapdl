@@ -347,7 +347,10 @@ def theta(T,It,Iw,L,x):
     return y
 
 def add_analytical_torsion(ax,It,Iw):
-    xv=np.linspace(0,L)
+    if 'r_bt' in globals():
+        xv=np.sort(r_bt.coords[:,0])
+    else:
+        xv=np.linspace(0,L)
     yv=theta(moment,It,Iw,L,xv)
     if rotation_in_degress:
         yv=180/np.pi*yv
