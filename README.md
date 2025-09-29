@@ -4,6 +4,14 @@ Structural analysis using Ansys Mechanical Parametric Design Language through py
 # Target
  * Provide resusable reference cases for other areas of my interests
 
+# Python install or update
+e.g.
+```
+C:\Users\simon\github\mapdl [main ≡]> uv venv --clear --python 3.13.7
+C:\Users\simon\github\mapdl [main ≡]> .venv\Scripts\activate
+(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install spyder-kernels==3.0.* ansys-mapdl-core[graphics] ansys-dpf-core ansys-dpf-post[plotting]
+```
+
 # Update of python packages
 ```
 C:\Users\simon\github\mapdl [main ≡]> .venv\Scripts\activate
