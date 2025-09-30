@@ -300,17 +300,19 @@ def plot_result(fig,ax,result,index,label):
     # Get coordinates
     coords = result.coords  # shape: (n_nodes, 3)
     # Extract X and ROTX (index 3), convert to degrees
-    x_rotx = []
+    val = []
+    scaler=1
+    if rotation_in_degress and index in(3,4,5):
+        scaler=(180 / np.pi);
     for i, node in enumerate(nnum):
         x = coords[i][0]
-        rotx_rad = disp[i][3]
-        rotx_deg = rotx_rad * (180 / np.pi)
-        x_rotx.append((x, rotx_deg))  
+        dval = disp[i][index]
+        val.append((x,scaler*dval))
     # Sort by X
-    x_rotx_sorted = sorted(x_rotx, key=lambda pair: pair[0])
-    x_vals, rotx_vals = zip(*x_rotx_sorted)
+    sorted_val = sorted(val, key=lambda pair: pair[0])
+    x_vals, vals = zip(*sorted_val)
     # Plot
-    ax.plot(x_vals, rotx_vals, label=label)
+    ax.plot(x_vals, vals, label=label)
 
 def plot_solid_result(fig,ax,result,index,label):
     raise Exception("Not done")
@@ -346,7 +348,7 @@ def theta(T,It,Iw,L,x):
         y=c0*((np.tanh(k*L)*(np.cosh(k*x)-1))-np.sinh(k*x)+k*x)
     return y
 
-def add_analytical_torsion(ax,It,Iw):
+def add_analytical_rotation(ax,It,Iw):
     if 'r_bt' in globals():
         xv=np.sort(r_bt.coords[:,0])
     else:
@@ -383,7 +385,7 @@ if moment:
         plot_result(fig_t,ax_t,r_bt,3,'beam188')
     if 'r_st' in vars() and False:
         plot_solid_result(fig_t,ax_t,r_st,5,'solid187')
-    add_analytical_torsion(ax_t,
+    add_analytical_rotation(ax_t,
                            get_sec_property('Torsion Constant'),
                            get_sec_property('Warping Constant'))
     ax_t.legend()
