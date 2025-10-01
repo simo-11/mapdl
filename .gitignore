@@ -174,3 +174,4 @@ cython_debug/
 .pypirc
 wrk
 **/screenshot.png
+local
