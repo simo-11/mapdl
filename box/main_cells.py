@@ -6,7 +6,7 @@ Created on Mon Apr  7 10:48:02 2025
 
 Create, solve and report results using ansys models for cantilever BOX
 """
-# %% commons
+#%% commons
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from ansys.mapdl import core as pymapdl
 from ansys.dpf import core as dpf
@@ -20,6 +20,33 @@ import re
 import enum
 import psutil    
 import time
+
+class MapdlManager:
+    def __init__(self):
+        self._mapdl = None
+    @property
+    def mapdl(self):
+        if self._mapdl is None or not self._mapdl.is_alive:
+            print("Starting new MAPDL-session...")
+            self._mapdl = pymapdl.launch_mapdl(run_location="local",
+                                               override=True,
+                                               cleanup_on_exit=False)
+        else:
+            print("Using active mapdl.")
+        return self._mapdl
+
+try:
+    from IPython import get_ipython
+except ImportError:
+    get_ipython = None
+
+try:
+    manager
+except NameError:
+    manager = MapdlManager()
+    if get_ipython:
+        get_ipython().user_ns["manager"] = manager
+        
 class Model(enum.Enum):
     BEAM=1
     SOLID=2
@@ -29,11 +56,14 @@ rotations are not supported in 0.14 (stable as of 2025-09)
 so getting results using legacy methods from 
 uncompressed results file requested using /fcomp,rst,0
 """  
-def pick_results(mapdl):
+def pick_results(mapdl,nlgeom=False):
     mapdl.run("/solu")
     mapdl.run("outres,all,all")
     mapdl.antype("static")
-    mapdl.nlgeom(key="on")
+    if nlgeom:
+        mapdl.nlgeom(key="on")
+    else:
+        mapdl.nlgeom(key="off")
     mapdl.solve()
     mapdl.finish()
     mapdl.post1()
@@ -85,7 +115,8 @@ def stop_ansys():
     if not wait_for_shutdown(timeout=5):
         # Step 3: Force kill if needed
         kill_mapdl_processes()
-    del globals()['mapdl']
+    if 'mapdl' in globals():
+        del globals()['mapdl']
 
 def check_global_mapdl():
     if not 'mapdl' in globals():
@@ -109,10 +140,16 @@ def check_global_mapdl():
                 print(f"MAPDL check exited: {e}")
     stop_ansys()
 
-check_global_mapdl()
+#check_global_mapdl()
 
 if not 'mapdl' in globals():
-    mapdl=pymapdl.launch_mapdl()
+    try:
+        mapdl=manager.mapdl
+    except Exception as e:
+        print(f"Using saved mapdl failed: {e}")
+        stop_ansys()
+        mapdl=manager.mapdl
+    mapdl.units("mks")
     mapdl.run("/FCOMP,RST,0")
     version=mapdl.version
     print(f"MAPDL lauched. Version: {version}")
@@ -127,8 +164,8 @@ h=0.08
 w=0.16
 t=0.01
 moment=1000
-force=None
-force_y=None
+force=1000
+force_y=1000
 nu=0.3
 G=E/(2*(1+nu))
 sharp_corners=True
@@ -139,9 +176,11 @@ print(f"""BOX with h={h}, w={w}, t={t}, L={L} is active
 E={E:.3G}, nu={nu:.3G}
 models={models}
 do_plots={do_plots}
-pymapdl_version={mapdl.info._get_pymapdl_version()}""")
-# %% debug functions
-# %% beam model
+pymapdl_version={mapdl.info._get_pymapdl_version()}
+moment={moment}, force={force}, force_y={force_y}
+""")
+#%% debug functions
+#%% beam model
 # secdata is needed for analytical solution
 mapdl.clear()
 mapdl.prep7()
@@ -195,35 +234,40 @@ if do_plots:
             show_bounds=True, point_size=10)
 mapdl.finish()
 print("Beam model created")
-# %% beam horizontal force
+#%% beam horizontal force
 if force_y and Model.BEAM in models:
     mapdl.prep7()
     mapdl.fkdele('ALL','ALL')
     mapdl.fk(2,"FY",force_y)
     r_bhf=pick_results(mapdl)
+    r_bhf_nl=pick_results(mapdl,True)
     print("Horizontal load for beam processed")
-# %% beam vertical force
+#%% beam vertical force
 # add moment to cancel effect of torsion
 if force and Model.BEAM in models:
-    moment=-force*(
+    _moment=-force*(
         get_sec_property('Centroid Y')-get_sec_property('Shear Center Y'))
     mapdl.prep7()
     mapdl.fkdele('ALL','ALL')
     mapdl.fk(2,"FZ",force)
-    mapdl.fk(2,"MX",moment)
-    r_bvf=pick_results()
+    mapdl.fk(2,"MX",_moment)
+    r_bvf=pick_results(mapdl)
+    r_bvf_nl=pick_results(mapdl,True)
     print("Vertical load for beam processed")
-# %% beam torsion 
+#%% beam torsion 
 # if moment is not given, uses vertical load applied at force_y
 if Model.BEAM in models:
-    if not moment:
-        moment=force*(force_y-get_sec_property('Shear Center Y'))
+    if moment:
+        _moment=moment
+    else:
+        _moment=force*(force_y-get_sec_property('Shear Center Y'))
     mapdl.prep7()
     mapdl.fkdele('ALL','ALL')
-    mapdl.fk(2,"MX",moment)
+    mapdl.fk(2,"MX",_moment)
     r_bt=pick_results(mapdl)
+    r_bt_nl=pick_results(mapdl,True)
     print("Torsional load for beam processed")
-# %% Solid model
+#%% Solid model
 if Model.SOLID in models:
     # https://ansyshelp.ansys.com/public/account/secured?returnurl=/////Views/Secured/corp/v242/en/ans_elem/Hlp_E_SOLID187.html
     mapdl.clear()
@@ -249,7 +293,7 @@ if Model.SOLID in models:
         mapdl.eplot(plot_bc=True)
     print("Solid model created with "
           +f"{mapdl.mesh.n_elem} elements and {mapdl.mesh.n_node} nodes")
-# %% torsion for solid using cerig
+#%% torsion for solid using cerig
 if Model.SOLID in models:
     mapdl.prep7()
     mapdl.fkdele('ALL','ALL')
@@ -274,7 +318,8 @@ if Model.SOLID in models:
     mapdl.cerig(master,'ALL',"UXYZ")
     mapdl.f(master,"MZ",moment)
     mapdl.allsel()
-    r_st=pick_results()
+    r_st=pick_results(mapdl)
+    r_st_nl=pick_results(mapdl,True)
     print("Torsional load for solid processed")
     if do_plots:
         model = dpf.Model(mapdl.result_file)
@@ -286,7 +331,7 @@ if Model.SOLID in models:
         sim=post.load_simulation(mapdl.result_file)
         displacement = sim.displacement()
         displacement.plot()
-# %% plot results
+#%% plot results
 def get_sorted_node_numbers(result):
     nnum=result.mesh.nnum
     nodes=result.mesh.nodes
@@ -364,6 +409,8 @@ if force:
     ax_hf.set_ylabel(r'horizontal displacement [m]')
     if 'r_bhf' in vars():
         plot_result(fig_hf,ax_hf,r_bhf,1,'beam188')
+    if 'r_bhf_nl' in vars():
+        plot_result(fig_hf,ax_hf,r_bhf_nl,1,'beam188-nlgeom')
     add_analytical_bending(ax_hf,get_sec_property('Izz'))
     ax_hf.legend()
 if force:    
@@ -372,6 +419,8 @@ if force:
     ax_vf.set_ylabel(r'vertical displacement [m]')
     if 'r_bvf' in vars():
         plot_result(fig_vf,ax_vf,r_bvf,2,'beam188')
+    if 'r_bvf_nl' in vars():
+        plot_result(fig_vf,ax_vf,r_bvf_nl,2,'beam188-nlgeom')
     add_analytical_bending(ax_vf,get_sec_property('Iyy'))
     ax_vf.legend()
 if moment:
@@ -383,6 +432,8 @@ if moment:
         ax_t.set_ylabel(r'rotation [radians]')
     if 'r_bt' in vars():
         plot_result(fig_t,ax_t,r_bt,3,'beam188')
+    if 'r_bt_nl' in vars():
+        plot_result(fig_t,ax_t,r_bt_nl,3,'beam188-nlgeom')
     if 'r_st' in vars() and False:
         plot_solid_result(fig_t,ax_t,r_st,5,'solid187')
     add_analytical_rotation(ax_t,
