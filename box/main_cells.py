@@ -5,6 +5,9 @@ Created on Mon Apr  7 10:48:02 2025
 @author: simo nikula
 
 Create, solve and report results using ansys models for cantilever BOX
+
+To reuse same ansys mapdl instance is used as global variable
+and Spyder should be configured to Run in console's namespace
 """
 #%% commons
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
