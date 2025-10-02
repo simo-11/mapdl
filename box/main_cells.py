@@ -20,17 +20,6 @@ import re
 import enum
 import psutil    
 import time
-
-try:
-    from IPython import get_ipython
-except ImportError:
-    get_ipython = None
-
-try:
-    if not 'mapdl' in globals():    
-        mapdl=get_ipython().user_ns["mapdl"]
-except (NameError,KeyError):
-    pass
         
 class Model(enum.Enum):
     BEAM=1
