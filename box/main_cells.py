@@ -21,31 +21,16 @@ import enum
 import psutil    
 import time
 
-class MapdlManager:
-    def __init__(self):
-        self._mapdl = None
-    @property
-    def mapdl(self):
-        if self._mapdl is None or not self._mapdl.is_alive:
-            print("Starting new MAPDL-session...")
-            self._mapdl = pymapdl.launch_mapdl(run_location="local",
-                                               override=True,
-                                               cleanup_on_exit=False)
-        else:
-            print("Using active mapdl.")
-        return self._mapdl
-
 try:
     from IPython import get_ipython
 except ImportError:
     get_ipython = None
 
 try:
-    manager
-except NameError:
-    manager = MapdlManager()
-    if get_ipython:
-        get_ipython().user_ns["manager"] = manager
+    if not 'mapdl' in globals():    
+        mapdl=get_ipython().user_ns["mapdl"]
+except (NameError,KeyError):
+    pass
         
 class Model(enum.Enum):
     BEAM=1
@@ -140,15 +125,19 @@ def check_global_mapdl():
                 print(f"MAPDL check exited: {e}")
     stop_ansys()
 
-#check_global_mapdl()
+check_global_mapdl()
 
 if not 'mapdl' in globals():
     try:
-        mapdl=manager.mapdl
+        mapdl=pymapdl.launch_mapdl(run_location="local",
+                                   override=True,
+                                   cleanup_on_exit=False)
     except Exception as e:
-        print(f"Using saved mapdl failed: {e}")
+        print(f"Launch failed: {e}")
         stop_ansys()
-        mapdl=manager.mapdl
+        mapdl=pymapdl.launch_mapdl(run_location="local",
+                                   override=True,
+                                   cleanup_on_exit=False)
     mapdl.units("mks")
     mapdl.run("/FCOMP,RST,0")
     version=mapdl.version
