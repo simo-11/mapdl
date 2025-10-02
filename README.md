@@ -35,6 +35,9 @@ In: mapdl = pymapdl.Mapdl()
 or
 In: mapdl=pymapdl.launch_mapdl()
 ```
+<img width="615" height="511" alt="image" src="https://github.com/user-attachments/assets/6d6ad3a5-c65a-49a9-96f9-e1ae4c614048" />
+
+
 
 # References
  * https://www.ansys.com/blog/what-is-apdl
