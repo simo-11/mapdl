@@ -312,6 +312,26 @@ if Model.SOLID in models:
         sim=post.load_simulation(mapdl.result_file)
         displacement = sim.displacement()
         displacement.plot()
+#%% solid model with copilot
+if Model.SOLID in models:
+    mapdl.clear()
+    mapdl.prep7()
+    mapdl.units(4)  # MKS
+    mapdl.et(1, 187)  # SOLID187 (quadratic tetrahedron)
+    mapdl.block(0, w, 0, h, 0, L)    
+    mapdl.block(t, w - t,
+                t, h - t,
+                0, L)
+    mapdl.vsbv(1, 2)
+    mapdl.vmesh('ALL')
+    mapdl.mp('EX', 1, E)
+    mapdl.mp('NUXY', 1, nu)
+    mapdl.nsel('S', 'LOC', 'Z', 0)
+    mapdl.d('ALL', 'ALL', 0)
+    mapdl.nsel('S', 'LOC', 'Z', L)
+    mapdl.cm('free_end', 'NODE')
+    mapdl.cpwith('UX', 'free_end')
+    mapdl.cpwith('UY', 'free_end')
 #%% plot results
 def get_sorted_node_numbers(result):
     nnum=result.mesh.nnum
