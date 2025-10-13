@@ -312,11 +312,19 @@ if Model.SOLID in models:
         sim=post.load_simulation(mapdl.result_file)
         displacement = sim.displacement()
         displacement.plot()
-#%% solid model with copilot
-if Model.SOLID in models:
+#%% helpers
+def get_nodes_at_z(z_target, tol=1e-6):
+    """
+    Returns node numbers whose z-coordinate is close to z_target.
+    """
+    coords = mapdl.mesh.nodes
+    node_ids = mapdl.mesh.nnum
+    nodes_with_ids = np.hstack([node_ids.reshape(-1, 1), coords])
+    selected = nodes_with_ids[np.abs(nodes_with_ids[:, 3] - z_target) < tol]
+    return selected[:, 0].astype(int).tolist()
+#%% solid model with free warping at free end
     mapdl.clear()
     mapdl.prep7()
-    mapdl.units(4)  # MKS
     mapdl.et(1, 187)  # SOLID187 (quadratic tetrahedron)
     mapdl.block(0, w, 0, h, 0, L)    
     mapdl.block(t, w - t,
@@ -328,10 +336,19 @@ if Model.SOLID in models:
     mapdl.mp('NUXY', 1, nu)
     mapdl.nsel('S', 'LOC', 'Z', 0)
     mapdl.d('ALL', 'ALL', 0)
+    cerig_master_node=mapdl.n(x=w/2, y=h/2, z=L)
+    mapdl.et(2,'MASS21')
+    mapdl.type(2)
+    mapdl.tshap('POINT')
+    mapdl.r(1)
+    mapdl.e(cerig_master_node)
+    #mapdl.nerr(nmerr=3,nmabt=1000_000)
     mapdl.nsel('S', 'LOC', 'Z', L)
     mapdl.cm('free_end', 'NODE')
-    mapdl.cpwith('UX', 'free_end')
-    mapdl.cpwith('UY', 'free_end')
+    mapdl.run('CMSEL, S, free_end')
+    mapdl.run(f'CERIG, {cerig_master_node}, ALL, UX, UY')
+    if do_plots and False:
+        mapdl.eplot(plot_bc=True)# Kills kernel    
 #%% plot results
 def get_sorted_node_numbers(result):
     nnum=result.mesh.nnum
