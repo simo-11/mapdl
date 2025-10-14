@@ -326,29 +326,42 @@ def get_nodes_at_z(z_target, tol=1e-6):
     mapdl.clear()
     mapdl.prep7()
     mapdl.et(1, 187)  # SOLID187 (quadratic tetrahedron)
-    mapdl.block(0, w, 0, h, 0, L)    
-    mapdl.block(t, w - t,
-                t, h - t,
-                0, L)
+    mapdl.mp('EX', 1, E)
+    mapdl.mp('PRXY', 1, nu)
+    mapdl.block(0, L, 0, w, 0, h)    
+    mapdl.block(0, L,
+                t, w - t,
+                t, h - t)
     mapdl.vsbv(1, 2)
     mapdl.vmesh('ALL')
-    mapdl.mp('EX', 1, E)
-    mapdl.mp('NUXY', 1, nu)
-    mapdl.nsel('S', 'LOC', 'Z', 0)
+    mapdl.nsel('S', 'LOC', 'X', 0)
     mapdl.d('ALL', 'ALL', 0)
-    cerig_master_node=mapdl.n(x=w/2, y=h/2, z=L)
+    cerig_master_node=mapdl.n(x=L, y=w/2, z=h/2)
     mapdl.et(2,'MASS21')
     mapdl.type(2)
     mapdl.tshap('POINT')
     mapdl.r(1)
     mapdl.e(cerig_master_node)
     #mapdl.nerr(nmerr=3,nmabt=1000_000)
-    mapdl.nsel('S', 'LOC', 'Z', L)
+    mapdl.nsel('S', 'LOC', 'X', L)
     mapdl.cm('free_end', 'NODE')
     mapdl.run('CMSEL, S, free_end')
-    mapdl.run(f'CERIG, {cerig_master_node}, ALL, UX, UY')
+    mapdl.run(f'CERIG, {cerig_master_node}, ALL, UY, UZ')
+    mapdl.f(cerig_master_node,'MX',moment)
+    mapdl.allsel()
+    r_st1=pick_results(mapdl)
+    r_st1_nl=pick_results(mapdl,True)   
     if do_plots and False:
-        mapdl.eplot(plot_bc=True)# Kills kernel    
+        mapdl.eplot()
+        model = dpf.Model(mapdl.result_file)
+        disp = model.results.displacement()
+        mesh=model.metadata.meshed_region
+        fields_container = disp.outputs.fields_container()
+        field = fields_container[0]
+        mesh.plot(field,deform_by=disp, scale_factor=35.)
+        sim=post.load_simulation(mapdl.result_file)
+        displacement = sim.displacement()
+        displacement.plot()       
 #%% plot results
 def get_sorted_node_numbers(result):
     nnum=result.mesh.nnum
