@@ -33,7 +33,11 @@ rotations are not supported in 0.14 (stable as of 2025-09)
 so getting results using legacy methods from 
 uncompressed results file requested using /fcomp,rst,0
 """  
-def pick_results(mapdl,nlgeom=False):
+def pick_results(mapdl,nlgeom=False,file=None):
+    if file!=None:
+        mapdl.finish()
+        mapdl.title(file)
+        mapdl.filname(fname=file)
     mapdl.run("/solu")
     mapdl.run("outres,all,all")
     mapdl.antype("static")
@@ -48,11 +52,28 @@ def pick_results(mapdl,nlgeom=False):
     node_coords=mapdl.mesh.nodes
     node_ids,disp_data=mapdl.result.nodal_displacement(0)
     sns=types.SimpleNamespace(
+        file=file,
         nnum=copy.deepcopy(node_ids),
         coords=copy.deepcopy(node_coords),
-        displacement=copy.deepcopy(disp_data)
+        displacement=copy.deepcopy(disp_data),
+        result_file=mapdl.result_file
         )
     return sns
+
+def dpf1(sns, scale_factor=None):
+    if scale_factor==None:
+        scale_factor=1.
+    model = dpf.Model(sns.result_file)
+    disp = model.results.displacement()
+    mesh=model.metadata.meshed_region
+    fields_container = disp.outputs.fields_container()
+    field = fields_container[0]
+    mesh.plot(field,deform_by=disp, scale_factor=scale_factor)
+    
+def dpf2(sns):
+    sim=post.load_simulation(sns.result_file)
+    displacement = sim.displacement()
+    displacement.plot()
 
 def get_sec_property(name):
     m=re.search(f'{name}\\s*=\\s*([-+\\d\\.E]+)',secdata)
@@ -299,8 +320,8 @@ if Model.SOLID in models:
     mapdl.cerig(master,'ALL',"UXYZ")
     mapdl.f(master,"MZ",moment)
     mapdl.allsel()
-    r_st=pick_results(mapdl)
-    r_st_nl=pick_results(mapdl,True)
+    r_st=pick_results(mapdl,file='st')
+    r_st_nl=pick_results(mapdl,True,'st_nl')
     print("Torsional load for solid processed")
     if do_plots:
         model = dpf.Model(mapdl.result_file)
@@ -327,7 +348,7 @@ def get_nodes_at_z(z_target, tol=1e-6):
     mapdl.prep7()
     mapdl.et(1, 187)  # SOLID187 (quadratic tetrahedron)
     mapdl.mp('EX', 1, E)
-    mapdl.mp('PRXY', 1, nu)
+    mapdl.mp('PRXY', 1, 0)
     mapdl.block(0, L, 0, w, 0, h)    
     mapdl.block(0, L,
                 t, w - t,
@@ -349,19 +370,13 @@ def get_nodes_at_z(z_target, tol=1e-6):
     mapdl.run(f'CERIG, {cerig_master_node}, ALL, UY, UZ')
     mapdl.f(cerig_master_node,'MX',moment)
     mapdl.allsel()
-    r_st1=pick_results(mapdl)
-    r_st1_nl=pick_results(mapdl,True)   
-    if do_plots and False:
-        mapdl.eplot()
-        model = dpf.Model(mapdl.result_file)
-        disp = model.results.displacement()
-        mesh=model.metadata.meshed_region
-        fields_container = disp.outputs.fields_container()
-        field = fields_container[0]
-        mesh.plot(field,deform_by=disp, scale_factor=35.)
-        sim=post.load_simulation(mapdl.result_file)
-        displacement = sim.displacement()
-        displacement.plot()       
+    r_st1=pick_results(mapdl,file='st1')
+    r_st1_nl=pick_results(mapdl,True,'st1_nl')   
+    if do_plots:
+        dpf1(r_st1)
+        dpf1(r_st1_nl)
+        dpf2(r_st1)
+        dpf2(r_st1_nl)
 #%% plot results
 def get_sorted_node_numbers(result):
     nnum=result.mesh.nnum
