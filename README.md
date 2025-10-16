@@ -5,14 +5,16 @@ Structural analysis using Ansys Mechanical Parametric Design Language through py
  * Provide resusable reference cases for other areas of my interests
 
 # Python install or update
+pyvistaqt pyqt5 are needed for more advanced usage of pyvista e.g. to view multiple windows with dynamic interactivity within spyder.
 e.g.
 ```
 C:\Users\simon\github\mapdl [main ≡]> uv venv --clear --python 3.13.8
 C:\Users\simon\github\mapdl [main ≡]> .venv\Scripts\activate
-(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install spyder-kernels==3.1.* ansys-mapdl-core[graphics] ansys-dpf-core ansys-dpf-post[plotting]
+(mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install spyder-kernels==3.1.* ansys-mapdl-core[graphics] ansys-dpf-core ansys-dpf-post[plotting] pyvistaqt pyqt5
 ```
 
 # Update of python packages
+e.g.
 ```
 C:\Users\simon\github\mapdl [main ≡]> .venv\Scripts\activate
 (mapdl) C:\Users\simon\github\mapdl [main ≡]> uv pip install ansys-mapdl-core[graphics] -U
