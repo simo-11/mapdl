@@ -486,3 +486,65 @@ if moment:
                            get_sec_property('Torsion Constant'),
                            get_sec_property('Warping Constant'))
     ax_t.legend()
+#%% 3d-plot
+from ansys.dpf import core as dpf
+from pyvistaqt import BackgroundPlotter
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import TwoSlopeNorm
+
+def qtplot(base_name,scale=None,scalar_component='UX'):
+    # Load result file
+    fn=f"local/{base_name}.rst";
+    model = dpf.Model(fn)
+    # Get mesh and displacement field
+    mesh = model.metadata.meshed_region
+    disp_fc = model.results.displacement().eval()
+    disp = disp_fc[0]  # Field
+    # Convert mesh to PyVista format
+    grid = mesh.grid
+    # Build node ID → point index mapping
+    node_ids = mesh.nodes.scoping.ids  # DPF node IDs
+    point_id_map = {node_id: i for i, node_id in enumerate(node_ids)}
+    # Create displacement array aligned with PyVista point order
+    n_points = grid.n_points
+    disp_array = np.zeros((n_points, 3))
+    # Use disp.scoping.ids to get node IDs for each displacement vector
+    for i, node_id in enumerate(disp.scoping.ids):
+        if node_id in point_id_map:
+            idx = point_id_map[node_id]
+            disp_array[idx] = disp.data[i]  
+    # Apply scaled displacement to mesh
+    if scale==None:
+        # Compute bounding box dimensions
+        bounds = grid.bounds
+        x_range = bounds[1] - bounds[0]
+        y_range = bounds[3] - bounds[2]
+        z_range = bounds[5] - bounds[4]
+        max_dim = max(x_range, y_range, z_range)        
+        # Compute displacement magnitude
+        disp_magnitude = np.linalg.norm(disp_array, axis=1)
+        max_disp = disp_magnitude.max()
+        # Autoscale: max displacement = 10% of largest model dimension
+        target_disp = 0.1 * max_dim
+        scale = target_disp / max_disp if max_disp > 0 else 1.0
+    deformed_grid = grid.copy()
+    deformed_grid.points = grid.points + disp_array * scale
+    # Choose scalar component (e.g. UX)
+    scalars = disp_array[:, 0]  # UX
+    # Create a diverging colormap centered at zero
+    cmap = plt.get_cmap("coolwarm")  # or "seismic", "RdBu", "PiYG", etc.
+    # Normalize so that zero is white
+    norm = TwoSlopeNorm(vmin=scalars.min(), vcenter=0.0, vmax=scalars.max())
+    colors = cmap(norm(scalars))[:, :3]  # Drop alpha channel
+    # Launch interactive non-blocking window
+    plotter = BackgroundPlotter()
+    plotter.add_mesh(deformed_grid, 
+                     scalars=colors,rgb=True,
+                     scalar_bar_args={"title": "UX"}, 
+                     show_edges=True)
+    plotter.add_text(f"""{base_name}
+scale={scale:.3g}
+""", font_size=12)
+    return (scale)
+#%%
