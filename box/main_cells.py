@@ -343,7 +343,7 @@ def get_nodes_at_z(z_target, tol=1e-6):
     nodes_with_ids = np.hstack([node_ids.reshape(-1, 1), coords])
     selected = nodes_with_ids[np.abs(nodes_with_ids[:, 3] - z_target) < tol]
     return selected[:, 0].astype(int).tolist()
-#%% solid model with free warping at free end
+#%% st1 
     mapdl.clear()
     mapdl.prep7()
     mapdl.et(1, 187)  # SOLID187 (quadratic tetrahedron)
@@ -377,6 +377,42 @@ def get_nodes_at_z(z_target, tol=1e-6):
         dpf1(r_st1_nl)
         dpf2(r_st1)
         dpf2(r_st1_nl)
+#%% st2
+# Using remote boundary connection
+# https://ansyshelp.ansys.com/public/account/secured?returnurl=/Views/Secured/corp/v252/en/wb_sim/ds_Moment.html
+    mapdl.clear()
+    mapdl.prep7()
+    mapdl.et(1, 187)  # SOLID187 (quadratic tetrahedron)
+    mapdl.mp('EX', 1, E)
+    mapdl.mp('PRXY', 1, 0)
+    mapdl.block(0, L, 0, w, 0, h)    
+    mapdl.block(0, L,
+                t, w - t,
+                t, h - t)
+    mapdl.vsbv(1, 2)
+    mapdl.vmesh('ALL')
+    mapdl.nsel('S', 'LOC', 'X', 0)
+    mapdl.d('ALL', 'ALL', 0)
+    mapdl.nsel('S', 'LOC', 'X', L)  # Select nodes at x = L
+    mapdl.cm('torque_end', 'NODE')  # Create node component
+    center_node=mapdl.n(x=L, y=w/2, z=h/2)  # Node at center of free end
+    mapdl.nsel(type_='S',item='NODE',vmin=center_node)
+    mapdl.cm('pilot', 'NODE')   # Component for pilot node
+    mapdl.cp(1, 'ROTX', 'pilot', 'torque_end')  # Couple 
+    mapdl.et(2,'MASS21')
+    mapdl.type(2)
+    mapdl.tshap('POINT')
+    mapdl.r(1)
+    mapdl.e(center_node)    
+    mapdl.f(center_node,'MX',moment)
+    mapdl.allsel()
+    r_st2=pick_results(mapdl,file='st2')
+    r_st2_nl=pick_results(mapdl,True,'st2_nl')   
+    if do_plots:
+        dpf1(r_st2)
+        dpf1(r_st2_nl)
+        dpf2(r_st2)
+        dpf2(r_st2_nl)     
 #%% plot results
 def get_sorted_node_numbers(result):
     nnum=result.mesh.nnum
