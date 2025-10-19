@@ -269,86 +269,17 @@ if Model.BEAM in models:
     r_bt=pick_results(mapdl)
     r_bt_nl=pick_results(mapdl,True)
     print("Torsional load for beam processed")
-#%% Solid model
-if Model.SOLID in models:
-    # https://ansyshelp.ansys.com/public/account/secured?returnurl=/////Views/Secured/corp/v242/en/ans_elem/Hlp_E_SOLID187.html
-    mapdl.clear()
-    mapdl.prep7()
-    outer=mapdl.blc4(0,0,w,h,depth=L)
-    inner=mapdl.blc4(t,t,w-2*t,h-2*t,depth=L)
-    mapdl.vsbv(outer,inner,keep1='delete',keep2='delete')
-    esize=np.pow(((2*w+2*h)*t*L)/1_000,1/3)
-    if do_plots:
-        mapdl.vplot(show_lines=True, 
-                    line_width=5, 
-                    show_bounds=True, 
-                    cpos="iso")
-    mapdl.et(1,"SOLID187")
-    mapdl.mp("EX",1,E)
-    mapdl.mp("PRXY",1,nu)
-    mapdl.esize(esize)
-    mapdl.vmesh('all')
-    mapdl.nsel("S", "LOC", "Z", 0, 0)
-    mapdl.d("ALL", "ALL", 0)
-    mapdl.allsel()
-    if do_plots:
-        mapdl.eplot(plot_bc=True)
-    print("Solid model created with "
-          +f"{mapdl.mesh.n_elem} elements and {mapdl.mesh.n_node} nodes")
-#%% torsion for solid using cerig
-if Model.SOLID in models:
-    mapdl.prep7()
-    mapdl.fkdele('ALL','ALL')
-    mapdl.cedele('all')
-    mapdl.nsel("S", "LOC", "Z", L, L)       
-    mapdl.nsel("R", "LOC", "X", w/2, w/2)       
-    mapdl.nsel("R", "LOC", "Y", h/2, h/2) 
-    mapdl.ndele('all')
-    mapdl.allsel()
-    mapdl.esel("S","ENAME","","MASS21")
-    mapdl.edele('ALL')
-    mapdl.allsel()
-    master=np.max(mapdl.mesh.nnum)+1
-    mapdl.n(master,w/2,h/2,L)
-    mapdl.et(2,'MASS21')
-    mapdl.type(2)
-    mapdl.tshap('POINT')
-    mapdl.r(1)
-    mapdl.e(master)
-    mapdl.nerr(nmerr=3,nmabt=1000_000)
-    mapdl.nsel("S", "LOC", "Z", L, L)
-    mapdl.cerig(master,'ALL',"UXYZ")
-    mapdl.f(master,"MZ",moment)
-    mapdl.allsel()
-    r_st=pick_results(mapdl,file='st')
-    r_st_nl=pick_results(mapdl,True,'st_nl')
-    print("Torsional load for solid processed")
-    if do_plots:
-        model = dpf.Model(mapdl.result_file)
-        disp = model.results.displacement()
-        mesh=model.metadata.meshed_region
-        fields_container = disp.outputs.fields_container()
-        field = fields_container[0]
-        mesh.plot(field,deform_by=disp, scale_factor=5.)
-        sim=post.load_simulation(mapdl.result_file)
-        displacement = sim.displacement()
-        displacement.plot()
-#%% helpers
-def get_nodes_at_z(z_target, tol=1e-6):
-    """
-    Returns node numbers whose z-coordinate is close to z_target.
-    """
-    coords = mapdl.mesh.nodes
-    node_ids = mapdl.mesh.nnum
-    nodes_with_ids = np.hstack([node_ids.reshape(-1, 1), coords])
-    selected = nodes_with_ids[np.abs(nodes_with_ids[:, 3] - z_target) < tol]
-    return selected[:, 0].astype(int).tolist()
-#%% st1 
+    r_bt.rfe=r_bt.displacement[1][3]*180/np.pi
+    print(f"Rotation at free end using beam with nlgeom=off {r_bt.rfe:.4g}°")
+    r_bt_nl.rfe=r_bt_nl.displacement[1][3]*180/np.pi
+    print(f"Rotation at free end using beam with nlgeom=on {r_bt_nl.rfe:.4g}°")
+#%% st1
+# uses cerig 
     mapdl.clear()
     mapdl.prep7()
     mapdl.et(1, 187)  # SOLID187 (quadratic tetrahedron)
     mapdl.mp('EX', 1, E)
-    mapdl.mp('PRXY', 1, 0)
+    mapdl.mp('PRXY', 1, 0.3)
     mapdl.block(0, L, 0, w, 0, h)    
     mapdl.block(0, L,
                 t, w - t,
@@ -371,40 +302,20 @@ def get_nodes_at_z(z_target, tol=1e-6):
     mapdl.f(cerig_master_node,'MX',moment)
     mapdl.allsel()
     r_st1=pick_results(mapdl,file='st1')
-    r_st1_nl=pick_results(mapdl,True,'st1_nl')   
+    r_st1_nl=pick_results(mapdl,True,'st1_nl')
+    r_st1.rfe=r_st1.displacement[cerig_master_node-1][3]*180/np.pi
+    print(("Rotation at free end using solid with nlgeom=off (st1)"
+           f"{r_st1.rfe:.4g}°"))
+    r_st1_nl.rfe=r_st1_nl.displacement[cerig_master_node-1][3]*180/np.pi
+    print(("Rotation at free end using solid with nlgeom=on (st1_nl)"
+           f"{r_st1_nl.rfe:.4g}°"))
     if do_plots:
         dpf1(r_st1)
         dpf1(r_st1_nl)
         dpf2(r_st1)
         dpf2(r_st1_nl)
 #%% st2
-# Using remote boundary connection
-# https://ansyshelp.ansys.com/public/account/secured?returnurl=/Views/Secured/corp/v252/en/wb_sim/ds_Moment.html
-    mapdl.clear()
-    mapdl.prep7()
-    mapdl.et(1, 187)  # SOLID187 (quadratic tetrahedron)
-    mapdl.mp('EX', 1, E)
-    mapdl.mp('PRXY', 1, 0)
-    mapdl.block(0, L, 0, w, 0, h)    
-    mapdl.block(0, L,
-                t, w - t,
-                t, h - t)
-    mapdl.vsbv(1, 2)
-    mapdl.vmesh('ALL')
-    mapdl.nsel('S', 'LOC', 'X', 0)
-    mapdl.d('ALL', 'ALL', 0)
-    mapdl.nsel('S', 'LOC', 'X', L)  # Select nodes at x = L
-    mapdl.cm('torque_end', 'NODE')  # Create node component
-    center_node=mapdl.n(x=L, y=w/2, z=h/2)  # Node at center of free end
-    mapdl.nsel(type_='S',item='NODE',vmin=center_node)
-    mapdl.cm('pilot', 'NODE')   # Component for pilot node
-    mapdl.cp(1, 'ROTX', 'pilot', 'torque_end')  # Couple 
-    mapdl.et(2,'MASS21')
-    mapdl.type(2)
-    mapdl.tshap('POINT')
-    mapdl.r(1)
-    mapdl.e(center_node)    
-    mapdl.f(center_node,'MX',moment)
+# uses ce:s which allow shrinking and expansion of cross section
     mapdl.allsel()
     r_st2=pick_results(mapdl,file='st2')
     r_st2_nl=pick_results(mapdl,True,'st2_nl')   
@@ -516,8 +427,10 @@ if moment:
         plot_result(fig_t,ax_t,r_bt,3,'beam188')
     if 'r_bt_nl' in vars():
         plot_result(fig_t,ax_t,r_bt_nl,3,'beam188-nlgeom')
-    if 'r_st' in vars() and False:
-        plot_solid_result(fig_t,ax_t,r_st,5,'solid187')
+    if 'r_st1' in vars() and False:
+        plot_solid_result(fig_t,ax_t,r_st1,5,'solid187-cerig(st1)')
+    if 'r_st1_nl' in vars() and False:
+        plot_solid_result(fig_t,ax_t,r_st1_nl,5,'solid187-cerig(st1)')
     add_analytical_rotation(ax_t,
                            get_sec_property('Torsion Constant'),
                            get_sec_property('Warping Constant'))
