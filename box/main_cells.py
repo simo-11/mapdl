@@ -436,15 +436,26 @@ if moment:
                            get_sec_property('Warping Constant'))
     ax_t.legend()
 #%% 3d-plot
-from ansys.dpf import core as dpf
 from pyvistaqt import BackgroundPlotter
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
+import pathlib
 
-def qtplot(base_name,scale=None,scalar_component='UX'):
+def qtplot(src,scale=None,scalar_component='UX'):
     # Load result file
-    fn=f"local/{base_name}.rst";
+    if isinstance(src,str):
+        fn=f"local/{src}.rst"
+        file=src
+    elif (isinstance(src,types.SimpleNamespace) and 
+        isinstance(src.result_file,pathlib.PurePath)):
+        fn=src.result_file
+        file=src.file
+    else:
+        raise TypeError(
+            ("Expected src to be str "
+             "or namespace having result_file "
+             f"but got {type(src).__name__}"))
     model = dpf.Model(fn)
     # Get mesh and displacement field
     mesh = model.metadata.meshed_region
@@ -492,8 +503,8 @@ def qtplot(base_name,scale=None,scalar_component='UX'):
                      scalars=colors,rgb=True,
                      scalar_bar_args={"title": "UX"}, 
                      show_edges=True)
-    plotter.add_text(f"""{base_name}
+    plotter.add_text(f"""{file}
 scale={scale:.3g}
 """, font_size=12)
-    return (scale)
+    return (plotter,scale)
 #%%
