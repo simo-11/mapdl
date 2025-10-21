@@ -45,7 +45,7 @@ def pick_results(mapdl,nlgeom=False,file=None):
         mapdl.nlgeom(key="on")
     else:
         mapdl.nlgeom(key="off")
-    mapdl.solve()
+    solve_txt=mapdl.solve()
     mapdl.finish()
     mapdl.post1()
     mapdl.set(1,1)
@@ -56,7 +56,8 @@ def pick_results(mapdl,nlgeom=False,file=None):
         nnum=copy.deepcopy(node_ids),
         coords=copy.deepcopy(node_coords),
         displacement=copy.deepcopy(disp_data),
-        result_file=mapdl.result_file
+        result_file=mapdl.result_file,
+        solve_txt=solve_txt
         )
     return sns
 
@@ -156,7 +157,6 @@ if not 'mapdl' in globals():
     version=mapdl.version
     print(f"MAPDL lauched. Version: {version}")
 models=(Model.BEAM,)
-E=210E9
 L=2
 ndiv=50
 master=0
@@ -294,7 +294,6 @@ if Model.BEAM in models:
     mapdl.tshap('POINT')
     mapdl.r(1)
     mapdl.e(cerig_master_node)
-    #mapdl.nerr(nmerr=3,nmabt=1000_000)
     mapdl.nsel('S', 'LOC', 'X', L)
     mapdl.cm('free_end', 'NODE')
     mapdl.run('CMSEL, S, free_end')
