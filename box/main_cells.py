@@ -16,6 +16,7 @@ from ansys.dpf import core as dpf
 from ansys.dpf import post
 from ansys.dpf.core import operators#noqa
 import matplotlib.pyplot as plt
+from matplotlib.markers import MarkerStyle
 import numpy as np
 import types
 import copy
@@ -166,8 +167,8 @@ h=0.08
 w=0.16
 t=0.01
 moment=1000
-force=1000
-force_y=1000
+force=0#1000
+force_y=0#1000
 nu=0.3
 G=E/(2*(1+nu))
 sharp_corners=True
@@ -226,7 +227,7 @@ secdata=mapdl.secdata(w,h,t,t,t,t)
 mapdl.k(1)
 mapdl.k(2,L)
 mapdl.lstr(1,2)
-mapdl.lesize("ALL",ndiv=ndiv,space=20)
+mapdl.lesize("ALL",ndiv=ndiv,space=-40)
 mapdl.lmesh("ALL")
 mapdl.dk(kpoi=1,lab="ALL",value=0)
 if do_plots:
@@ -256,7 +257,7 @@ if force and Model.BEAM in models:
     r_bvf=pick_results(mapdl)
     r_bvf_nl=pick_results(mapdl,True)
     print("Vertical load for beam processed")
-#%% beam torsion 
+#%% beam torsion bt
 # if moment is not given, uses vertical load applied at force_y
 if Model.BEAM in models:
     if moment:
@@ -264,15 +265,36 @@ if Model.BEAM in models:
     else:
         _moment=force*(force_y-get_sec_property('Shear Center Y'))
     mapdl.prep7()
+    mapdl.dkdele(kpoi=2,lab="ALL",)  
     mapdl.fkdele('ALL','ALL')
     mapdl.fk(2,"MX",_moment)
     r_bt=pick_results(mapdl)
     r_bt_nl=pick_results(mapdl,True)
-    print("Torsional load for beam processed")
+    print("Torsional load for beam (bt) processed")
     r_bt.rfe=r_bt.displacement[1][3]*180/np.pi
     print(f"Rotation at free end using beam with nlgeom=off {r_bt.rfe:.4g}°")
     r_bt_nl.rfe=r_bt_nl.displacement[1][3]*180/np.pi
     print(f"Rotation at free end using beam with nlgeom=on {r_bt_nl.rfe:.4g}°")
+#%% bt1 
+# warping constrained at free end
+if Model.BEAM in models:
+    if moment:
+        _moment=moment
+    else:
+        _moment=force*(force_y-get_sec_property('Shear Center Y'))
+    mapdl.prep7()
+    mapdl.dkdele(kpoi=2,lab="ALL",)  
+    mapdl.dk(kpoi=2,lab="WARP",value=0)  
+    mapdl.fkdele('ALL','ALL')
+    mapdl.fk(2,"MX",_moment)
+    r_bt1=pick_results(mapdl)
+    r_bt1_nl=pick_results(mapdl,True)
+    print("Torsional load for beam (bt1) processed")
+    r_bt1.rfe=r_bt1.displacement[1][3]*180/np.pi
+    print(f"Rotation for bt1 with nlgeom=off {r_bt1.rfe:.4g}°")
+    r_bt1_nl.rfe=r_bt1_nl.displacement[1][3]*180/np.pi
+    print(("Rotation for bt1 with nlgeom=on"
+           f" {r_bt1_nl.rfe:.4g}°"))
 #%% st1
 # uses cerig 
     mapdl.clear()
@@ -331,7 +353,7 @@ def get_sorted_node_numbers(result):
     ss.sort(key=lambda c:nodes[c-1][0])
     return ss
 
-def plot_result(fig,ax,result,index,label):
+def plot_result(fig,ax,result,index,**kwargs):
     nnum =result.nnum
     disp = result.displacement  # disp shape: (n_nodes, 7)
     # Get coordinates
@@ -349,7 +371,7 @@ def plot_result(fig,ax,result,index,label):
     sorted_val = sorted(val, key=lambda pair: pair[0])
     x_vals, vals = zip(*sorted_val)
     # Plot
-    ax.plot(x_vals, vals, label=label)
+    ax.plot(x_vals, vals, **kwargs)
 
 def plot_solid_result(fig,ax,result,index,label):
     raise Exception("Not done")
@@ -417,15 +439,35 @@ if force:
     ax_vf.legend()
 if moment:
     fig_t, ax_t = plt.subplots(num='torsion',clear=True)
-    ax_t.set_ylabel(r'x-coordinate [m]')
+    ax_t.set_xlabel(r'x-coordinate [m]')
     if rotation_in_degress:
         ax_t.set_ylabel(r'rotation [degrees]')
     else:
         ax_t.set_ylabel(r'rotation [radians]')
     if 'r_bt' in vars():
-        plot_result(fig_t,ax_t,r_bt,3,'beam188')
+        plot_result(fig_t,ax_t,r_bt,3
+                    ,label='beam188(bt)'
+                    ,marker=MarkerStyle((3,0,0))
+                    ,markevery=(0.02,0.2)
+                    )
     if 'r_bt_nl' in vars():
-        plot_result(fig_t,ax_t,r_bt_nl,3,'beam188-nlgeom')
+        plot_result(fig_t,ax_t,r_bt_nl,3
+                    ,label='beam188-nlgeom(bt)'
+                    ,marker=MarkerStyle((5,0,0))
+                    ,markevery=(0.05,0.2)
+                    )
+    if 'r_bt1' in vars():
+        plot_result(fig_t,ax_t,r_bt1,3
+                    ,label='beam188(bt1)'
+                    ,marker=MarkerStyle((3,1,0))
+                    ,markevery=(0.08,0.2)
+                    )
+    if 'r_bt1_nl' in vars():
+        plot_result(fig_t,ax_t,r_bt1_nl,3
+                    ,label='beam188-nlgeom(bt1)'
+                    ,marker=MarkerStyle((5,1,0))
+                    ,markevery=(0.11,0.2)
+                    )
     if 'r_st1' in vars() and False:
         plot_solid_result(fig_t,ax_t,r_st1,5,'solid187-cerig(st1)')
     if 'r_st1_nl' in vars() and False:
