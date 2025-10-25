@@ -258,43 +258,126 @@ if force and Model.BEAM in models:
     r_bvf_nl=pick_results(mapdl,True)
     print("Vertical load for beam processed")
 #%% beam torsion bt
-# if moment is not given, uses vertical load applied at force_y
 if Model.BEAM in models:
-    if moment:
-        _moment=moment
-    else:
-        _moment=force*(force_y-get_sec_property('Shear Center Y'))
+    _moment=moment
     mapdl.prep7()
-    mapdl.dkdele(kpoi=2,lab="ALL",)  
+    mapdl.dkdele(kpoi=2,lab="ALL")
+    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",value=0)    
     mapdl.fkdele('ALL','ALL')
     mapdl.fk(2,"MX",_moment)
+    print("Torsional load for beam (bt) is processed")
     r_bt=pick_results(mapdl)
-    r_bt_nl=pick_results(mapdl,True)
-    print("Torsional load for beam (bt) processed")
     r_bt.rfe=r_bt.displacement[1][3]*180/np.pi
-    print(f"Rotation at free end using beam with nlgeom=off {r_bt.rfe:.4g}°")
+    print(f"Rotation for bt with nlgeom=off (bt) {r_bt.rfe:.4g}°")
+    r_bt_nl=pick_results(mapdl,True)
     r_bt_nl.rfe=r_bt_nl.displacement[1][3]*180/np.pi
-    print(f"Rotation at free end using beam with nlgeom=on {r_bt_nl.rfe:.4g}°")
+    print(f"Rotation for bt with nlgeom=on (bt_nl) {r_bt_nl.rfe:.4g}°")
 #%% bt1 
-# warping constrained at free end
+# warping constrained at loaded end
 if Model.BEAM in models:
-    if moment:
-        _moment=moment
-    else:
-        _moment=force*(force_y-get_sec_property('Shear Center Y'))
+    _moment=moment
     mapdl.prep7()
-    mapdl.dkdele(kpoi=2,lab="ALL",)  
-    mapdl.dk(kpoi=2,lab="WARP",value=0)  
+    mapdl.dkdele(kpoi=2,lab="ALL")
+    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",value=0)
     mapdl.fkdele('ALL','ALL')
     mapdl.fk(2,"MX",_moment)
+    print("Torsional load for beam (bt1) is processed")
     r_bt1=pick_results(mapdl)
-    r_bt1_nl=pick_results(mapdl,True)
-    print("Torsional load for beam (bt1) processed")
     r_bt1.rfe=r_bt1.displacement[1][3]*180/np.pi
-    print(f"Rotation for bt1 with nlgeom=off {r_bt1.rfe:.4g}°")
+    print(f"Rotation for bt1 with nlgeom=off (bt1) {r_bt1.rfe:.4g}°")
+    r_bt1_nl=pick_results(mapdl,True)
     r_bt1_nl.rfe=r_bt1_nl.displacement[1][3]*180/np.pi
-    print(("Rotation for bt1 with nlgeom=on"
+    print(("Rotation for bt1 with nlgeom=on (bt1_nl)"
            f" {r_bt1_nl.rfe:.4g}°"))
+#%% bt2 
+# warping and axial displacement constrained at loaded end
+if Model.BEAM in models:
+    _moment=moment
+    mapdl.prep7()
+    mapdl.dkdele(kpoi=2,lab="ALL",)  
+    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
+    mapdl.fkdele('ALL','ALL')
+    mapdl.fk(2,"MX",_moment)
+    print("Torsional load for beam (bt2) is processed")
+    r_bt2=pick_results(mapdl)
+    r_bt2.rfe=r_bt2.displacement[1][3]*180/np.pi
+    print(f"Rotation for bt1 with nlgeom=off (bt2) {r_bt2.rfe:.4g}°")
+    r_bt2_nl=pick_results(mapdl,True)
+    r_bt2_nl.rfe=r_bt2_nl.displacement[1][3]*180/np.pi
+    print(("Rotation for bt1 with nlgeom=on (bt2_nl)"
+           f" {r_bt2_nl.rfe:.4g}°"))
+#%% qtplot
+from pyvistaqt import BackgroundPlotter
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import TwoSlopeNorm
+import pathlib
+
+def qtplot(src,scale=None,scalar_component='UX'):
+    # Load result file
+    if isinstance(src,str):
+        fn=f"local/{src}.rst"
+        file=src
+    elif (isinstance(src,types.SimpleNamespace) and 
+        isinstance(src.result_file,pathlib.PurePath)):
+        fn=src.result_file
+        file=src.file
+    else:
+        raise TypeError(
+            ("Expected src to be str "
+             "or namespace having result_file "
+             f"but got {type(src).__name__}"))
+    model = dpf.Model(fn)
+    # Get mesh and displacement field
+    mesh = model.metadata.meshed_region
+    disp_fc = model.results.displacement().eval()
+    disp = disp_fc[0]  # Field
+    # Convert mesh to PyVista format
+    grid = mesh.grid
+    # Build node ID → point index mapping
+    node_ids = mesh.nodes.scoping.ids  # DPF node IDs
+    point_id_map = {node_id: i for i, node_id in enumerate(node_ids)}
+    # Create displacement array aligned with PyVista point order
+    n_points = grid.n_points
+    disp_array = np.zeros((n_points, 3))
+    # Use disp.scoping.ids to get node IDs for each displacement vector
+    for i, node_id in enumerate(disp.scoping.ids):
+        if node_id in point_id_map:
+            idx = point_id_map[node_id]
+            disp_array[idx] = disp.data[i]  
+    # Apply scaled displacement to mesh
+    if scale==None:
+        # Compute bounding box dimensions
+        bounds = grid.bounds
+        x_range = bounds[1] - bounds[0]
+        y_range = bounds[3] - bounds[2]
+        z_range = bounds[5] - bounds[4]
+        max_dim = max(x_range, y_range, z_range)        
+        # Compute displacement magnitude
+        disp_magnitude = np.linalg.norm(disp_array, axis=1)
+        max_disp = disp_magnitude.max()
+        # Autoscale: max displacement = 10% of largest model dimension
+        target_disp = 0.1 * max_dim
+        scale = target_disp / max_disp if max_disp > 0 else 1.0
+    deformed_grid = grid.copy()
+    deformed_grid.points = grid.points + disp_array * scale
+    # Choose scalar component (e.g. UX)
+    scalars = disp_array[:, 0]  # UX
+    # Create a diverging colormap centered at zero
+    cmap = plt.get_cmap("coolwarm")  # or "seismic", "RdBu", "PiYG", etc.
+    # Normalize so that zero is white
+    norm = TwoSlopeNorm(vmin=scalars.min(), vcenter=0.0, vmax=scalars.max())
+    colors = cmap(norm(scalars))[:, :3]  # Drop alpha channel
+    # Launch interactive non-blocking window
+    plotter = BackgroundPlotter()
+    plotter.add_mesh(deformed_grid, 
+                     scalars=colors,rgb=True,
+                     scalar_bar_args={"title": "UX"}, 
+                     show_edges=True)
+    plotter.add_text(f"""{file}
+scale={scale:.3g}
+""", font_size=12)
+    return (plotter,scale)
 #%% st1
 # uses cerig 
     mapdl.clear()
@@ -468,6 +551,18 @@ if moment:
                     ,marker=MarkerStyle((5,1,0))
                     ,markevery=(0.11,0.2)
                     )
+    if 'r_bt2' in vars():
+        plot_result(fig_t,ax_t,r_bt2,3
+                    ,label='beam188(bt2)'
+                    ,marker=MarkerStyle((3,2,0))
+                    ,markevery=(0.14,0.2)
+                    )
+    if 'r_bt2_nl' in vars():
+        plot_result(fig_t,ax_t,r_bt2_nl,3
+                    ,label='beam188-nlgeom(bt2)'
+                    ,marker=MarkerStyle((5,2,0))
+                    ,markevery=(0.17,0.2)
+                    )
     if 'r_st1' in vars() and False:
         plot_solid_result(fig_t,ax_t,r_st1,5,'solid187-cerig(st1)')
     if 'r_st1_nl' in vars() and False:
@@ -476,76 +571,4 @@ if moment:
                            get_sec_property('Torsion Constant'),
                            get_sec_property('Warping Constant'))
     ax_t.legend()
-#%% 3d-plot
-from pyvistaqt import BackgroundPlotter
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
-import pathlib
-
-def qtplot(src,scale=None,scalar_component='UX'):
-    # Load result file
-    if isinstance(src,str):
-        fn=f"local/{src}.rst"
-        file=src
-    elif (isinstance(src,types.SimpleNamespace) and 
-        isinstance(src.result_file,pathlib.PurePath)):
-        fn=src.result_file
-        file=src.file
-    else:
-        raise TypeError(
-            ("Expected src to be str "
-             "or namespace having result_file "
-             f"but got {type(src).__name__}"))
-    model = dpf.Model(fn)
-    # Get mesh and displacement field
-    mesh = model.metadata.meshed_region
-    disp_fc = model.results.displacement().eval()
-    disp = disp_fc[0]  # Field
-    # Convert mesh to PyVista format
-    grid = mesh.grid
-    # Build node ID → point index mapping
-    node_ids = mesh.nodes.scoping.ids  # DPF node IDs
-    point_id_map = {node_id: i for i, node_id in enumerate(node_ids)}
-    # Create displacement array aligned with PyVista point order
-    n_points = grid.n_points
-    disp_array = np.zeros((n_points, 3))
-    # Use disp.scoping.ids to get node IDs for each displacement vector
-    for i, node_id in enumerate(disp.scoping.ids):
-        if node_id in point_id_map:
-            idx = point_id_map[node_id]
-            disp_array[idx] = disp.data[i]  
-    # Apply scaled displacement to mesh
-    if scale==None:
-        # Compute bounding box dimensions
-        bounds = grid.bounds
-        x_range = bounds[1] - bounds[0]
-        y_range = bounds[3] - bounds[2]
-        z_range = bounds[5] - bounds[4]
-        max_dim = max(x_range, y_range, z_range)        
-        # Compute displacement magnitude
-        disp_magnitude = np.linalg.norm(disp_array, axis=1)
-        max_disp = disp_magnitude.max()
-        # Autoscale: max displacement = 10% of largest model dimension
-        target_disp = 0.1 * max_dim
-        scale = target_disp / max_disp if max_disp > 0 else 1.0
-    deformed_grid = grid.copy()
-    deformed_grid.points = grid.points + disp_array * scale
-    # Choose scalar component (e.g. UX)
-    scalars = disp_array[:, 0]  # UX
-    # Create a diverging colormap centered at zero
-    cmap = plt.get_cmap("coolwarm")  # or "seismic", "RdBu", "PiYG", etc.
-    # Normalize so that zero is white
-    norm = TwoSlopeNorm(vmin=scalars.min(), vcenter=0.0, vmax=scalars.max())
-    colors = cmap(norm(scalars))[:, :3]  # Drop alpha channel
-    # Launch interactive non-blocking window
-    plotter = BackgroundPlotter()
-    plotter.add_mesh(deformed_grid, 
-                     scalars=colors,rgb=True,
-                     scalar_bar_args={"title": "UX"}, 
-                     show_edges=True)
-    plotter.add_text(f"""{file}
-scale={scale:.3g}
-""", font_size=12)
-    return (plotter,scale)
 #%%
