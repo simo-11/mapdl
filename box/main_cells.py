@@ -77,10 +77,9 @@ def dpf2(sns):
     displacement = sim.displacement()
     displacement.plot()
 
-def get_sec_property(name):
+def get_sec_property(secdata,name):
     m=re.search(f'{name}\\s*=\\s*([-+\\d\\.E]+)',secdata)
     return float(m.group(1))
-
 
 def check_mapdl(mapdl):
     return mapdl.is_alive
@@ -159,7 +158,7 @@ if not 'mapdl' in globals():
     print(f"MAPDL lauched. Version: {version}")
 models=(Model.BEAM,)
 L=2
-ndiv=50
+ndiv=10
 master=0
 rotation_in_degress=True
 E=1E9
@@ -185,135 +184,135 @@ moment={moment}, force={force}, force_y={force_y}
 #%% debug functions
 #%% beam model
 # secdata is needed for analytical solution
-mapdl.clear()
-mapdl.prep7()
-mapdl.et(1,"BEAM188")
-mapdl.keyopt(1,1,1)
-# 1=Warping included
-#mapdl.keyopt(1,2,0)
-# Cross-section scaling for nlgeom
-#mapdl.keyopt(1,3,3)
-# Cubic shape functions, 0=Linear, 1=Quadratic
-#mapdl.keyopt(1,4,0)
-# 0=torsion related, 1=transverese, 2=Combined shear stresses 
-#mapdl.keyopt(1,5,0)
-# 0=3D, 1=XY
-#mapdl.keyopt(1,6,0)
-# 0=Output section forces/moments and strains/curvatures at 
-#   integration points along the length (default)
-#mapdl.keyopt(1,7,0)
-# 0=None, 1=Max and min, 2=Output stresses at each section point
-#mapdl.keyopt(1,9,0)
-# 0=None
-# 1=Maximum and minimum stresses/strains
-# 2=1 plus stresses and strains along the exterior 
-#   boundary of the cross-section
-# 3=1 plus stresses and strains at all section nodes
-#mapdl.keyopt(1,11,0)
-# 0=Automatically determine if preintegrated section properties can be used
-# 1=Use numerical integration of section
-#mapdl.keyopt(1,12,0)
-# 0=Linear tapered section analysis; cross-section properties 
-#   are evaluated at each Gauss point
-# 1=Average cross-section analysis
-#mapdl.keyopt(1,15,0)
-# 0=Store averaged results at each section corner node
-# 1=Store non-averaged results at each section integration point.
-mapdl.mp("EX",1,E)
-mapdl.mp("PRXY",1,nu)
-secid=1
-mapdl.sectype(secid,"BEAM","HREC",'BOX',5)
-secdata=mapdl.secdata(w,h,t,t,t,t)
-mapdl.k(1)
-mapdl.k(2,L)
-mapdl.lstr(1,2)
-mapdl.lesize("ALL",ndiv=ndiv,space=-40)
-mapdl.lmesh("ALL")
-mapdl.dk(kpoi=1,lab="ALL",value=0)
-if do_plots:
-    mapdl.nplot(nnum=True, cpos="xy",
-            plot_bc=True,plot_bc_legend=True,
-            bc_labels="mechanical",
-            show_bounds=True, point_size=10)
-mapdl.finish()
-print("Beam model created")
+def bm():
+    mapdl.clear()
+    mapdl.prep7()
+    mapdl.et(1,"BEAM188")
+    # https://ansyshelp.ansys.com/public/account/secured?returnurl=/Views/Secured/corp/v252/en/ans_elem/Hlp_E_BEAM188.html?q=beam188
+    mapdl.keyopt(1,1,1)
+    # 1=Warping included
+    #mapdl.keyopt(1,2,0)
+    # Cross-section scaling for nlgeom
+    mapdl.keyopt(1,3,2)
+    # shape functions along then length, 0=Linear, 1=Quadratic, 3=Qubic
+    #mapdl.keyopt(1,4,0)
+    # 0=torsion related, 1=transverese, 2=Combined shear stresses 
+    #mapdl.keyopt(1,5,0)
+    # 0=3D, 1=XY
+    #mapdl.keyopt(1,6,0)
+    # 0=Output section forces/moments and strains/curvatures at 
+    #   integration points along the length (default)
+    #mapdl.keyopt(1,7,0)
+    # 0=None, 1=Max and min, 2=Output stresses at each section point
+    #mapdl.keyopt(1,9,0)
+    # 0=None
+    # 1=Maximum and minimum stresses/strains
+    # 2=1 plus stresses and strains along the exterior 
+    #   boundary of the cross-section
+    # 3=1 plus stresses and strains at all section nodes
+    #mapdl.keyopt(1,11,0)
+    # 0=Automatically determine if preintegrated section properties can be used
+    # 1=Use numerical integration of section
+    #mapdl.keyopt(1,12,0)
+    # 0=Linear tapered section analysis; cross-section properties 
+    #   are evaluated at each Gauss point
+    # 1=Average cross-section analysis
+    #mapdl.keyopt(1,15,0)
+    # 0=Store averaged results at each section corner node
+    # 1=Store non-averaged results at each section integration point.
+    mapdl.mp("EX",1,E)
+    mapdl.mp("PRXY",1,nu)
+    secid=1
+    mapdl.sectype(secid,"BEAM","HREC",'BOX',5)
+    secdata=mapdl.secdata(w,h,t,t,t,t)
+    mapdl.k(1)
+    mapdl.k(2,L)
+    mapdl.lstr(1,2)
+    mapdl.lesize("ALL",ndiv=ndiv,space=-40)
+    mapdl.lmesh("ALL")
+    mapdl.dk(kpoi=1,lab="ALL",value=0)
+    if do_plots:
+        mapdl.nplot(nnum=True, cpos="xy",
+                plot_bc=True,plot_bc_legend=True,
+                bc_labels="mechanical",
+                show_bounds=True, point_size=10)
+    print("Beam model created")
+    return secdata
 #%% beam horizontal force
 if force_y and Model.BEAM in models:
-    mapdl.prep7()
-    mapdl.fkdele('ALL','ALL')
+    bm()
     mapdl.fk(2,"FY",force_y)
-    r_bhf=pick_results(mapdl)
-    r_bhf_nl=pick_results(mapdl,True)
+    r_bhf=pick_results(mapdl,file='bhf')
+    r_bhf_nl=pick_results(mapdl,True,file='bhf_nl')
     print("Horizontal load for beam processed")
 #%% beam vertical force
 # add moment to cancel effect of torsion
 if force and Model.BEAM in models:
+    secdata=bm()
     _moment=-force*(
-        get_sec_property('Centroid Y')-get_sec_property('Shear Center Y'))
-    mapdl.prep7()
-    mapdl.fkdele('ALL','ALL')
+        get_sec_property(secdata,'Centroid Y')
+        -get_sec_property(secdata,'Shear Center Y'))
     mapdl.fk(2,"FZ",force)
     mapdl.fk(2,"MX",_moment)
-    r_bvf=pick_results(mapdl)
-    r_bvf_nl=pick_results(mapdl,True)
+    r_bvf=pick_results(mapdl,file='bvf')
+    r_bvf_nl=pick_results(mapdl,True,file='bvf_nl')
     print("Vertical load for beam processed")
 #%% beam torsion bt
-if Model.BEAM in models:
+if Model.BEAM in models:    
+    bm()
+    # overloading causes failures
+    #for scale in range(15,45,5):
+    #    _moment=scale*moment
     _moment=moment
-    mapdl.prep7()
-    mapdl.dkdele(kpoi=2,lab="ALL")
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",value=0)    
-    mapdl.fkdele('ALL','ALL')
     mapdl.fk(2,"MX",_moment)
-    print("Torsional load for beam (bt) is processed")
-    r_bt=pick_results(mapdl)
+    print(f"Torsional load of {_moment} for beam (bt) is processed")
+    r_bt=pick_results(mapdl,file='bt')
     r_bt.rfe=r_bt.displacement[1][3]*180/np.pi
     print(f"Rotation for bt with nlgeom=off (bt) {r_bt.rfe:.4g}°")
-    r_bt_nl=pick_results(mapdl,True)
+    r_bt_nl=pick_results(mapdl,True,file='bt_nl')
     r_bt_nl.rfe=r_bt_nl.displacement[1][3]*180/np.pi
     print(f"Rotation for bt with nlgeom=on (bt_nl) {r_bt_nl.rfe:.4g}°")
 #%% bt1 
 # warping constrained at loaded end
 if Model.BEAM in models:
     _moment=moment
-    mapdl.prep7()
-    mapdl.dkdele(kpoi=2,lab="ALL")
+    bm()
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",value=0)
-    mapdl.fkdele('ALL','ALL')
     mapdl.fk(2,"MX",_moment)
-    print("Torsional load for beam (bt1) is processed")
-    r_bt1=pick_results(mapdl)
+    print(f"Torsional load of {_moment} for beam (bt1) is processed")
+    r_bt1=pick_results(mapdl,file='bt1')
     r_bt1.rfe=r_bt1.displacement[1][3]*180/np.pi
     print(f"Rotation for bt1 with nlgeom=off (bt1) {r_bt1.rfe:.4g}°")
-    r_bt1_nl=pick_results(mapdl,True)
+    r_bt1_nl=pick_results(mapdl,True,file='bt1_nl')
     r_bt1_nl.rfe=r_bt1_nl.displacement[1][3]*180/np.pi
     print(("Rotation for bt1 with nlgeom=on (bt1_nl)"
            f" {r_bt1_nl.rfe:.4g}°"))
 #%% bt2 
 # warping and axial displacement constrained at loaded end
-if Model.BEAM in models:
-    _moment=moment
-    mapdl.prep7()
-    mapdl.dkdele(kpoi=2,lab="ALL",)  
+uc='bt2'
+#if Model.BEAM in models:
+for scale in range(15,45,5):
+    _moment=scale*moment
+    bm()
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
-    mapdl.fkdele('ALL','ALL')
     mapdl.fk(2,"MX",_moment)
-    print("Torsional load for beam (bt2) is processed")
-    r_bt2=pick_results(mapdl)
+    print(f"Torsional moment of {_moment} for beam ({uc}) is processed")
+    r_bt2=pick_results(mapdl,file=f'{uc}')
     r_bt2.rfe=r_bt2.displacement[1][3]*180/np.pi
-    print(f"Rotation for bt1 with nlgeom=off (bt2) {r_bt2.rfe:.4g}°")
-    r_bt2_nl=pick_results(mapdl,True)
+    print(f"Rotation for {uc} with nlgeom=off ({uc}) {r_bt2.rfe:.4g}°")
+    r_bt2_nl=pick_results(mapdl,True,file=f'{uc}_nl')
     r_bt2_nl.rfe=r_bt2_nl.displacement[1][3]*180/np.pi
-    print(("Rotation for bt1 with nlgeom=on (bt2_nl)"
+    print((f"Rotation for {uc} with nlgeom=on ({uc}_nl)"
            f" {r_bt2_nl.rfe:.4g}°"))
 #%% qtplot
 from pyvistaqt import BackgroundPlotter
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
+import matplotlib.colors as plt_colors
 import pathlib
 
-def qtplot(src,scale=None,scalar_component='UX'):
+def qtplot(src,scale=None,scalar_component='UX',node_labels=False):
     # Load result file
     if isinstance(src,str):
         fn=f"local/{src}.rst"
@@ -340,11 +339,19 @@ def qtplot(src,scale=None,scalar_component='UX'):
     # Create displacement array aligned with PyVista point order
     n_points = grid.n_points
     disp_array = np.zeros((n_points, 3))
+    if node_labels:
+        labels = np.empty(n_points,dtype='<U30')
     # Use disp.scoping.ids to get node IDs for each displacement vector
     for i, node_id in enumerate(disp.scoping.ids):
         if node_id in point_id_map:
             idx = point_id_map[node_id]
-            disp_array[idx] = disp.data[i]  
+            disp_array[idx] = disp.data[i]
+            if node_labels:
+                labels[idx]=(f"{node_id} ("
+                         f"{grid.points[idx][0]+disp_array[idx][0]:.4f}, "
+                         f"{grid.points[idx][1]+disp_array[idx][1]:.4f}, "
+                         f"{grid.points[idx][2]+disp_array[idx][2]:.4f})"
+                         )
     # Apply scaled displacement to mesh
     if scale==None:
         # Compute bounding box dimensions
@@ -365,8 +372,13 @@ def qtplot(src,scale=None,scalar_component='UX'):
     scalars = disp_array[:, 0]  # UX
     # Create a diverging colormap centered at zero
     cmap = plt.get_cmap("coolwarm")  # or "seismic", "RdBu", "PiYG", etc.
-    # Normalize so that zero is white
-    norm = TwoSlopeNorm(vmin=scalars.min(), vcenter=0.0, vmax=scalars.max())
+    vmin=scalars.min()
+    vmax=scalars.max()
+    if vmin<0 and vmax>0:
+        # Normalize so that zero is white
+        norm = plt_colors.TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax)
+    else:
+        norm = plt_colors.Normalize(vmin=vmin, vmax=vmax)
     colors = cmap(norm(scalars))[:, :3]  # Drop alpha channel
     # Launch interactive non-blocking window
     plotter = BackgroundPlotter()
@@ -374,12 +386,19 @@ def qtplot(src,scale=None,scalar_component='UX'):
                      scalars=colors,rgb=True,
                      scalar_bar_args={"title": "UX"}, 
                      show_edges=True)
-    plotter.add_text(f"""{file}
+    if node_labels:
+        plotter.add_point_labels(deformed_grid.points, 
+                             labels, font_size=10, point_color='red')
+    n_elements = mesh.elements.n_elements        
+    plotter.add_text(f"""{file}, {n_points} nodes, {n_elements} elements
 scale={scale:.3g}
 """, font_size=12)
     return (plotter,scale)
+#%% debug cell
+qtplot(r_bt, node_labels=True)
 #%% st1
-# uses cerig 
+# uses cerig
+if Model.SOLID in models:
     mapdl.clear()
     mapdl.prep7()
     mapdl.et(1, 187)  # SOLID187 (quadratic tetrahedron)
@@ -420,6 +439,7 @@ scale={scale:.3g}
         dpf2(r_st1_nl)
 #%% st2
 # uses ce:s which allow shrinking and expansion of cross section
+if Model.SOLID in models:
     mapdl.allsel()
     r_st2=pick_results(mapdl,file='st2')
     r_st2_nl=pick_results(mapdl,True,'st2_nl')   
@@ -500,6 +520,7 @@ def add_analytical_rotation(ax,It,Iw):
         yv=180/np.pi*yv
     ax.plot(xv,yv,label='analytical')
 
+secdata=bm()
 if force:    
     fig_hf, ax_hf = plt.subplots(num='horizontal force',clear=True)
     ax_hf.set_xlabel(r'x-coordinate [m]')
@@ -568,7 +589,7 @@ if moment:
     if 'r_st1_nl' in vars() and False:
         plot_solid_result(fig_t,ax_t,r_st1_nl,5,'solid187-cerig(st1)')
     add_analytical_rotation(ax_t,
-                           get_sec_property('Torsion Constant'),
-                           get_sec_property('Warping Constant'))
+                           get_sec_property(secdata,'Torsion Constant'),
+                           get_sec_property(secdata,'Warping Constant'))
     ax_t.legend()
 #%%
