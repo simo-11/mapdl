@@ -259,11 +259,8 @@ if force and Model.BEAM in models:
     print("Vertical load for beam processed")
 #%% beam torsion bt
 if Model.BEAM in models:    
-    bm()
-    # overloading causes failures
-    #for scale in range(15,45,5):
-    #    _moment=scale*moment
     _moment=moment
+    bm()
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",value=0)    
     mapdl.fk(2,"MX",_moment)
     print(f"Torsional load of {_moment} for beam (bt) is processed")
@@ -291,9 +288,8 @@ if Model.BEAM in models:
 #%% bt2 
 # warping and axial displacement constrained at loaded end
 uc='bt2'
-#if Model.BEAM in models:
-for scale in range(15,45,5):
-    _moment=scale*moment
+if Model.BEAM in models:
+    _moment=moment
     bm()
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
     mapdl.fk(2,"MX",_moment)
@@ -305,6 +301,52 @@ for scale in range(15,45,5):
     r_bt2_nl.rfe=r_bt2_nl.displacement[1][3]*180/np.pi
     print((f"Rotation for {uc} with nlgeom=on ({uc}_nl)"
            f" {r_bt2_nl.rfe:.4g}°"))
+#%% btol
+# warping and axial displacement constrained at loaded end
+uc='btol'
+if Model.BEAM in models:
+    bm()
+    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
+    print(f"Torsional constraint for beam ({uc}) is processed")
+    mapdl.finish()
+    mapdl.title(uc)
+    mapdl.filname(fname=uc)
+    mapdl.run("/SOLU")
+    mapdl.antype("STATIC")
+    mapdl.nlgeom("ON")
+    mapdl.nropt("FULL")
+    mapdl.kbc(0) 
+    mapdl.autots("OFF")
+    mapdl.outres("ALL", "ALL")
+    rot_vals = np.concatenate((np.linspace(0., 0.5 * np.pi, 10),
+                              np.linspace(0.52*np.pi, 0.54 * np.pi, 2)))
+    for i, rot in enumerate(rot_vals, start=1):
+        mapdl.time(i)
+        mapdl.d(2, "ROTX", rot)
+        print((f"Target rotation for step {i} is"
+               f" {rot:.3g} i.e. {rot*180/np.pi:.3g}°"))      
+        mapdl.solve()
+    mapdl.post1()
+    result_list=mapdl.set('list').to_list()    
+    nsteps = np.shape(result_list)[0] 
+    rotation_deg = []
+    reaction_rx = []
+    for i in range(1, nsteps):
+        mapdl.set(i)  # Time step i
+        rx = np.abs(mapdl.get_value("NODE", 1, "RF", "ROTX"))
+        node_ids,disp_data=mapdl.result.nodal_displacement(i)
+        ra = disp_data[1][3]*180/np.pi
+        reaction_rx.append(rx)
+        rotation_deg.append(ra)
+    plt.figure(figsize=(8, 5))
+    plt.plot(rotation_deg, reaction_rx, 
+             marker='o', linestyle='-', color='blue')
+    plt.xlabel('Rotation (degrees)')
+    plt.ylabel('Reaction Moment ROTX (Nm)')
+    plt.title('Reaction Moment vs. Rotation (Ansys NLGEOM)')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()    
 #%% qtplot
 from pyvistaqt import BackgroundPlotter
 import numpy as np
