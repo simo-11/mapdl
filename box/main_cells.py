@@ -184,42 +184,24 @@ moment={moment}, force={force}, force_y={force_y}
 #%% debug functions
 #%% beam model
 # secdata is needed for analytical solution
-def bm():
+def bm(keyopt1=0,keyopt3=0):
     mapdl.clear()
     mapdl.prep7()
     mapdl.et(1,"BEAM188")
     # https://ansyshelp.ansys.com/public/account/secured?returnurl=/Views/Secured/corp/v252/en/ans_elem/Hlp_E_BEAM188.html?q=beam188
-    mapdl.keyopt(1,1,1)
+    # Keyopt 1:
+    # 0=No warping (default)
     # 1=Warping included
-    #mapdl.keyopt(1,2,0)
-    # Cross-section scaling for nlgeom
-    mapdl.keyopt(1,3,2)
-    # shape functions along then length, 0=Linear, 1=Quadratic, 3=Qubic
-    #mapdl.keyopt(1,4,0)
-    # 0=torsion related, 1=transverese, 2=Combined shear stresses 
-    #mapdl.keyopt(1,5,0)
-    # 0=3D, 1=XY
-    #mapdl.keyopt(1,6,0)
-    # 0=Output section forces/moments and strains/curvatures at 
-    #   integration points along the length (default)
-    #mapdl.keyopt(1,7,0)
-    # 0=None, 1=Max and min, 2=Output stresses at each section point
-    #mapdl.keyopt(1,9,0)
-    # 0=None
-    # 1=Maximum and minimum stresses/strains
-    # 2=1 plus stresses and strains along the exterior 
-    #   boundary of the cross-section
-    # 3=1 plus stresses and strains at all section nodes
-    #mapdl.keyopt(1,11,0)
-    # 0=Automatically determine if preintegrated section properties can be used
-    # 1=Use numerical integration of section
-    #mapdl.keyopt(1,12,0)
-    # 0=Linear tapered section analysis; cross-section properties 
-    #   are evaluated at each Gauss point
-    # 1=Average cross-section analysis
-    #mapdl.keyopt(1,15,0)
-    # 0=Store averaged results at each section corner node
-    # 1=Store non-averaged results at each section integration point.
+    #   Causes numerical issues if torsion exceeds about 2π 
+    # 2=Remove warping for closed sections
+    mapdl.keyopt(1,1,keyopt1)
+    # Keyopt 3: 
+    # shape functions along then length
+    # 0=Linear (default), migitates numerical issues partly
+    # 2=Quadratic 
+    # 3=Qubic
+    #
+    mapdl.keyopt(1,3,keyopt3)
     mapdl.mp("EX",1,E)
     mapdl.mp("PRXY",1,nu)
     secid=1
@@ -302,15 +284,37 @@ if Model.BEAM in models:
     print((f"Rotation for {uc} with nlgeom=on ({uc}_nl)"
            f" {r_bt2_nl.rfe:.4g}°"))
 #%% btol
-# warping and axial displacement constrained at loaded end
-uc='btol'
-if Model.BEAM in models:
-    bm()
+# displacement constraints at loaded end and keyopts varied
+plt.figure(figsize=(8, 5))
+plt.xlabel('Rotation (degrees)')
+plt.ylabel('Reaction Moment ROTX (Nm)')
+plt.title('Reaction Moment vs. Rotation (Ansys NLGEOM)')
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+for uc in range(1,2):
+    match uc:
+        case 1:
+            keyopt1=0
+            keyopt3=0
+            marker='o'
+            color='blue'
+            linestyle='-'
+        case 2:
+            keyopt1=1
+            keyopt3=3
+            marker=MarkerStyle((3,0,0))
+            color='red'
+            linestyle='--'
+        case _:
+            raise Exception(f'Settings for uc {uc} are missing')
+    label=f"uc{uc}"        
+    bm(keyopt1=keyopt1,keyopt3=keyopt3)
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
-    print(f"Torsional constraint for beam ({uc}) is processed")
+    print(f"btol {label} ({uc}) is processed")
     mapdl.finish()
-    mapdl.title(uc)
-    mapdl.filname(fname=uc)
+    mapdl.title(label)
+    mapdl.filname(fname=label)
     mapdl.run("/SOLU")
     mapdl.antype("STATIC")
     mapdl.nlgeom("ON")
@@ -318,14 +322,17 @@ if Model.BEAM in models:
     mapdl.kbc(0) 
     mapdl.autots("OFF")
     mapdl.outres("ALL", "ALL")
-    rot_vals = np.concatenate((np.linspace(0., 0.5 * np.pi, 10),
-                              np.linspace(0.52*np.pi, 0.54 * np.pi, 2)))
-    for i, rot in enumerate(rot_vals, start=1):
-        mapdl.time(i)
-        mapdl.d(2, "ROTX", rot)
-        print((f"Target rotation for step {i} is"
-               f" {rot:.3g} i.e. {rot*180/np.pi:.3g}°"))      
-        mapdl.solve()
+    rot_vals = np.concatenate((np.linspace(0., 1.5 * np.pi, 10),
+                              np.linspace(1.65*np.pi, 4 * np.pi, 50)))
+    try:
+        for i, rot in enumerate(rot_vals, start=1):
+            mapdl.time(i)
+            mapdl.d(2, "ROTX", rot)
+            rv=f"{rot*180/np.pi:.3g}°"
+            print(f"Target rotation for step {i} is {rot:.3g} i.e. {rv}")      
+            mapdl.solve()
+    except Exception as e:
+        print(f"Solve failed for {rv} due to {e}")        
     mapdl.post1()
     result_list=mapdl.set('list').to_list()    
     nsteps = np.shape(result_list)[0] 
@@ -338,15 +345,10 @@ if Model.BEAM in models:
         ra = disp_data[1][3]*180/np.pi
         reaction_rx.append(rx)
         rotation_deg.append(ra)
-    plt.figure(figsize=(8, 5))
     plt.plot(rotation_deg, reaction_rx, 
-             marker='o', linestyle='-', color='blue')
-    plt.xlabel('Rotation (degrees)')
-    plt.ylabel('Reaction Moment ROTX (Nm)')
-    plt.title('Reaction Moment vs. Rotation (Ansys NLGEOM)')
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()    
+             marker=marker, linestyle=linestyle, color=color)
+    plt.legend()
+    plt.draw()
 #%% qtplot
 from pyvistaqt import BackgroundPlotter
 import numpy as np
