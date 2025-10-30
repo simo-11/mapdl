@@ -285,13 +285,21 @@ if Model.BEAM in models:
            f" {r_bt2_nl.rfe:.4g}°"))
 #%% btol
 # displacement constraints at loaded end and keyopts varied
-plt.figure(figsize=(8, 5))
+rot_vals = np.concatenate((np.linspace(0., 1.5 * np.pi, 3),
+           np.linspace(1.65*np.pi, 4 * np.pi, 4)))
+max_rot=max(rot_vals)
+xmax=180/np.pi*max_rot
+ymax=get_sec_property(secdata,'Torsion Constant')*G*max_rot
+fig=plt.figure(num='btol')
+ax=fig.gca()
+ax.clear()
+ax.set_xlim(0, xmax)
+ax.set_ylim(0, ymax)
 plt.xlabel('Rotation (degrees)')
 plt.ylabel('Reaction Moment ROTX (Nm)')
 plt.title('Reaction Moment vs. Rotation (Ansys NLGEOM)')
 plt.grid(True)
 plt.tight_layout()
-plt.show()
 for uc in range(1,2):
     match uc:
         case 1:
@@ -309,6 +317,9 @@ for uc in range(1,2):
         case _:
             raise Exception(f'Settings for uc {uc} are missing')
     label=f"uc{uc}"        
+    line,=ax.plot([],[],
+         marker=marker, linestyle=linestyle, color=color)
+    plt.legend()
     bm(keyopt1=keyopt1,keyopt3=keyopt3)
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
     print(f"btol {label} ({uc}) is processed")
@@ -322,33 +333,28 @@ for uc in range(1,2):
     mapdl.kbc(0) 
     mapdl.autots("OFF")
     mapdl.outres("ALL", "ALL")
-    rot_vals = np.concatenate((np.linspace(0., 1.5 * np.pi, 10),
-                              np.linspace(1.65*np.pi, 4 * np.pi, 50)))
+    rotation_deg = [0]
+    reaction_rx = [0]
     try:
         for i, rot in enumerate(rot_vals, start=1):
             mapdl.time(i)
             mapdl.d(2, "ROTX", rot)
-            rv=f"{rot*180/np.pi:.3g}°"
-            print(f"Target rotation for step {i} is {rot:.3g} i.e. {rv}")      
+            rv=f"{rot*180/np.pi:4.3g}°"
+            print(f"Target rotation for step {i:2d} is {rot:4.3g} i.e. {rv}",
+                  end=", ")      
             mapdl.solve()
+            rx = np.abs(mapdl.get_value("NODE", 1, "RF", "ROTX"))
+            arot = mapdl.post_processing.nodal_rotation('x')[1]            
+            ra = arot*180/np.pi
+            print(f"got {arot:4.3g} i.e. {ra:4.3g}, reaction force={rx:.5g}")
+            reaction_rx.append(rx)
+            rotation_deg.append(ra)
+            line.set_data(rotation_deg, reaction_rx)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+            plt.pause(0.05)    
     except Exception as e:
         print(f"Solve failed for {rv} due to {e}")        
-    mapdl.post1()
-    result_list=mapdl.set('list').to_list()    
-    nsteps = np.shape(result_list)[0] 
-    rotation_deg = []
-    reaction_rx = []
-    for i in range(1, nsteps):
-        mapdl.set(i)  # Time step i
-        rx = np.abs(mapdl.get_value("NODE", 1, "RF", "ROTX"))
-        node_ids,disp_data=mapdl.result.nodal_displacement(i)
-        ra = disp_data[1][3]*180/np.pi
-        reaction_rx.append(rx)
-        rotation_deg.append(ra)
-    plt.plot(rotation_deg, reaction_rx, 
-             marker=marker, linestyle=linestyle, color=color)
-    plt.legend()
-    plt.draw()
 #%% qtplot
 from pyvistaqt import BackgroundPlotter
 import numpy as np
