@@ -218,7 +218,6 @@ def bm(keyopt1=0,keyopt3=0):
                 plot_bc=True,plot_bc_legend=True,
                 bc_labels="mechanical",
                 show_bounds=True, point_size=10)
-    print("Beam model created")
     return secdata
 #%% beam horizontal force
 if force_y and Model.BEAM in models:
@@ -285,8 +284,8 @@ if Model.BEAM in models:
            f" {r_bt2_nl.rfe:.4g}°"))
 #%% btol
 # displacement constraints at loaded end and keyopts varied
-rot_vals = np.concatenate((np.linspace(0., 1.5 * np.pi, 3),
-           np.linspace(1.65*np.pi, 4 * np.pi, 4)))
+rot_vals = np.concatenate((np.linspace(0., 1.5 * np.pi, 2),
+           np.linspace(1.65*np.pi, 2 * np.pi, 2)))
 max_rot=max(rot_vals)
 xmax=180/np.pi*max_rot
 ymax=get_sec_property(secdata,'Torsion Constant')*G*max_rot
@@ -300,29 +299,28 @@ plt.ylabel('Reaction Moment ROTX (Nm)')
 plt.title('Reaction Moment vs. Rotation (Ansys NLGEOM)')
 plt.grid(True)
 plt.tight_layout()
-for uc in range(1,2):
+for uc in range(1,3):
     match uc:
         case 1:
             keyopt1=0
             keyopt3=0
-            marker='o'
-            color='blue'
-            linestyle='-'
-        case 2:
-            keyopt1=1
-            keyopt3=3
             marker=MarkerStyle((3,0,0))
+            color='blue'
+            linestyle=(0,(1,uc))
+        case _ if uc<5:
+            keyopt1=1
+            keyopt3=uc-2
+            marker=MarkerStyle((3+uc,1,0))
             color='red'
-            linestyle='--'
-        case _:
-            raise Exception(f'Settings for uc {uc} are missing')
+            linestyle=(0,(3,uc))
+        case _:raise Exception(f'Settings for uc {uc} are missing')
     label=f"uc{uc}"        
-    line,=ax.plot([],[],
+    line,=ax.plot([],[],label=label,
          marker=marker, linestyle=linestyle, color=color)
     plt.legend()
     bm(keyopt1=keyopt1,keyopt3=keyopt3)
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
-    print(f"btol {label} ({uc}) is processed")
+    print(f"btol {label} is processed")
     mapdl.finish()
     mapdl.title(label)
     mapdl.filname(fname=label)
@@ -342,11 +340,19 @@ for uc in range(1,2):
             rv=f"{rot*180/np.pi:4.3g}°"
             print(f"Target rotation for step {i:2d} is {rot:4.3g} i.e. {rv}",
                   end=", ")      
-            mapdl.solve()
+            solve_text=mapdl.solve()
+            sol=mapdl.solution
+            if not sol.converged:
+                print(f"converged={sol.converged},"
+                       f" moment_cnv={sol.moment_cnv:.5g},"
+                       f" n_eqit={sol.n_eqit:.0f}")
+                break
             rx = np.abs(mapdl.get_value("NODE", 1, "RF", "ROTX"))
             arot = mapdl.post_processing.nodal_rotation('x')[1]            
             ra = arot*180/np.pi
-            print(f"got {arot:4.3g} i.e. {ra:4.3g}, reaction force={rx:.5g}")
+            print(f"got reaction force={rx:.5g},"
+                   f" moment_cnv={sol.moment_cnv:.5g},"
+                   f" n_eqit={sol.n_eqit:.0f}")
             reaction_rx.append(rx)
             rotation_deg.append(ra)
             line.set_data(rotation_deg, reaction_rx)
