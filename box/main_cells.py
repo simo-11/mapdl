@@ -283,7 +283,9 @@ if Model.BEAM in models:
     print((f"Rotation for {uc} with nlgeom=on ({uc}_nl)"
            f" {r_bt2_nl.rfe:.4g}°"))
 #%% btol
-# displacement constraints at loaded end and keyopts varied
+# displacement constraint at loaded end and keyopts varied
+# if warping is included solution fails for rot_vals n*2*pi
+# 
 rot_vals = np.concatenate((np.linspace(0., 1.5 * np.pi, 2),
            np.linspace(1.65*np.pi, 2 * np.pi, 2)))
 max_rot=max(rot_vals)
@@ -301,25 +303,28 @@ plt.grid(True)
 plt.tight_layout()
 for uc in range(1,3):
     match uc:
-        case 1:
+        case 1|2:
             keyopt1=0
             keyopt3=0
-            marker=MarkerStyle((3,0,0))
+            marker=MarkerStyle((3+uc,0,0))
             color='blue'
-            linestyle=(0,(1,uc))
+            linestyle=(0,(2*uc,2*uc))
         case _ if uc<5:
             keyopt1=1
             keyopt3=uc-2
             marker=MarkerStyle((3+uc,1,0))
             color='red'
-            linestyle=(0,(3,uc))
+            linestyle=(0,(2*uc,2*uc))
         case _:raise Exception(f'Settings for uc {uc} are missing')
     label=f"uc{uc}"        
     line,=ax.plot([],[],label=label,
          marker=marker, linestyle=linestyle, color=color)
     plt.legend()
     bm(keyopt1=keyopt1,keyopt3=keyopt3)
-    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
+    if uc % 2 == 0:
+        mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0) 
+    else:
+        mapdl.dk(kpoi=2,lab="UY",lab2="UZ",value=0) 
     print(f"btol {label} is processed")
     mapdl.finish()
     mapdl.title(label)
@@ -331,6 +336,7 @@ for uc in range(1,3):
     mapdl.kbc(0) 
     mapdl.autots("OFF")
     mapdl.outres("ALL", "ALL")
+    mapdl.autots()
     rotation_deg = [0]
     reaction_rx = [0]
     try:
@@ -348,9 +354,10 @@ for uc in range(1,3):
                        f" n_eqit={sol.n_eqit:.0f}")
                 break
             rx = np.abs(mapdl.get_value("NODE", 1, "RF", "ROTX"))
+            rfx = np.abs(mapdl.get_value("NODE", 1, "RF", "rfx"))
             arot = mapdl.post_processing.nodal_rotation('x')[1]            
             ra = arot*180/np.pi
-            print(f"got reaction force={rx:.5g},"
+            print(f"rf/rotx={rx:.5g}, rf/rfx={rfx:.5g}"
                    f" moment_cnv={sol.moment_cnv:.5g},"
                    f" n_eqit={sol.n_eqit:.0f}")
             reaction_rx.append(rx)
