@@ -296,9 +296,14 @@ ax=fig.gca()
 ax.clear()
 ax.set_xlim(0, xmax)
 ax.set_ylim(0, ymax)
-plt.xlabel('Rotation (degrees)')
-plt.ylabel('Reaction Moment ROTX (Nm)')
-plt.title('Reaction Moment vs. Rotation (Ansys NLGEOM)')
+ax2 = ax.twinx()
+ax2.clear()
+ax2.set_ylim(0, 5*ymax)
+plt.xlabel('Rotation [degrees]')
+ax.set_ylabel('Reaction Moment [Nm]')
+ax2.set_ylabel('Reaction Force [N]')
+ax2.yaxis.set_label_position("right")
+plt.title('Reaction vs. Rotation using Ansys Beams with NLGEOM)')
 plt.grid(True)
 plt.tight_layout()
 for uc in range(1,3):
@@ -307,19 +312,25 @@ for uc in range(1,3):
             keyopt1=0
             keyopt3=0
             marker=MarkerStyle((3+uc,0,0))
+            marker2=MarkerStyle((3+uc,2,0))
             color='blue'
             linestyle=(0,(2*uc,2*uc))
         case _ if uc<5:
             keyopt1=1
             keyopt3=uc-2
             marker=MarkerStyle((3+uc,1,0))
+            marker2=MarkerStyle((3+uc,2,0))
             color='red'
             linestyle=(0,(2*uc,2*uc))
         case _:raise Exception(f'Settings for uc {uc} are missing')
     label=f"uc{uc}"        
     line,=ax.plot([],[],label=label,
          marker=marker, linestyle=linestyle, color=color)
-    plt.legend()
+    line2,=ax2.plot([],[],label=label,
+         marker=marker2, linestyle=linestyle, color=color)
+    lines = [line, line2]
+    labels = [line.get_label() for line in lines]
+    ax2.legend(lines, labels, loc='upper left')    
     bm(keyopt1=keyopt1,keyopt3=keyopt3)
     if uc % 2 == 0:
         mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0) 
@@ -339,6 +350,7 @@ for uc in range(1,3):
     mapdl.autots()
     rotation_deg = [0]
     reaction_rx = [0]
+    reaction_fx = [0]
     try:
         for i, rot in enumerate(rot_vals, start=1):
             mapdl.time(i)
@@ -353,16 +365,18 @@ for uc in range(1,3):
                        f" moment_cnv={sol.moment_cnv:.5g},"
                        f" n_eqit={sol.n_eqit:.0f}")
                 break
-            rx = np.abs(mapdl.get_value("NODE", 1, "RF", "ROTX"))
-            rfx = np.abs(mapdl.get_value("NODE", 1, "RF", "rfx"))
+            mx = np.abs(mapdl.get_value("NODE", 1, "RF", "mx"))
+            fx = np.abs(mapdl.get_value("NODE", 1, "RF", "fx"))
             arot = mapdl.post_processing.nodal_rotation('x')[1]            
             ra = arot*180/np.pi
-            print(f"rf/rotx={rx:.5g}, rf/rfx={rfx:.5g}"
+            print(f"rf/mx={mx:.5g}, rf/fx={fx:.5g}"
                    f" moment_cnv={sol.moment_cnv:.5g},"
                    f" n_eqit={sol.n_eqit:.0f}")
-            reaction_rx.append(rx)
+            reaction_rx.append(mx)
+            reaction_fx.append(fx)
             rotation_deg.append(ra)
             line.set_data(rotation_deg, reaction_rx)
+            line2.set_data(rotation_deg, reaction_fx)
             fig.canvas.draw()
             fig.canvas.flush_events()
             plt.pause(0.05)    
