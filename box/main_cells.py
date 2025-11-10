@@ -6,7 +6,7 @@ Created on Mon Apr  7 10:48:02 2025
 
 Create, solve and report results using ansys models for cantilever BOX
 
-To reuse same ansys mapdl instance is used as global variable
+To reuse same ansys mapdl instance it is used as global variable
 and Spyder should be configured to Run in console's namespace
 """
 #%% commons
@@ -286,19 +286,20 @@ if Model.BEAM in models:
 # displacement constraint at loaded end and keyopts varied
 # if warping is included solution fails for rot_vals n*2*pi
 # 
-rot_vals = np.concatenate((np.linspace(0., 1.5 * np.pi, 2),
-           np.linspace(1.65*np.pi, 2 * np.pi, 2)))
+rot_vals = np.concatenate((np.linspace(0., 1.5 * np.pi, 5),
+           np.linspace(1.65*np.pi, 2 * np.pi, 5)))
 max_rot=max(rot_vals)
 xmax=180/np.pi*max_rot
-ymax=get_sec_property(secdata,'Torsion Constant')*G*max_rot
+ymax=1.2*get_sec_property(secdata,'Torsion Constant')*G*max_rot/L
 fig=plt.figure(num='btol')
+fig.clear()
 ax=fig.gca()
 ax.clear()
 ax.set_xlim(0, xmax)
 ax.set_ylim(0, ymax)
 ax2 = ax.twinx()
 ax2.clear()
-ax2.set_ylim(0, 5*ymax)
+ax2.set_ylim(-ymax/2, 6*ymax)
 plt.xlabel('Rotation [degrees]')
 ax.set_ylabel('Reaction Moment [Nm]')
 ax2.set_ylabel('Reaction Force [N]')
@@ -306,31 +307,30 @@ ax2.yaxis.set_label_position("right")
 plt.title('Reaction vs. Rotation using Ansys Beams with NLGEOM)')
 plt.grid(True)
 plt.tight_layout()
-for uc in range(1,3):
+for uc in range(1,5): # use upper limit of 4 or 5 to see failure
     match uc:
         case 1|2:
             keyopt1=0
             keyopt3=0
-            marker=MarkerStyle((3+uc,0,0))
-            marker2=MarkerStyle((3+uc,2,0))
+            marker=MarkerStyle((3,2,0))
             color='blue'
+            color2='cyan'
             linestyle=(0,(2*uc,2*uc))
         case _ if uc<5:
             keyopt1=1
             keyopt3=uc-2
-            marker=MarkerStyle((3+uc,1,0))
-            marker2=MarkerStyle((3+uc,2,0))
+            marker=MarkerStyle((3,1,0))
             color='red'
+            color2='orange'
             linestyle=(0,(2*uc,2*uc))
         case _:raise Exception(f'Settings for uc {uc} are missing')
     label=f"uc{uc}"        
     line,=ax.plot([],[],label=label,
          marker=marker, linestyle=linestyle, color=color)
     line2,=ax2.plot([],[],label=label,
-         marker=marker2, linestyle=linestyle, color=color)
-    lines = [line, line2]
-    labels = [line.get_label() for line in lines]
-    ax2.legend(lines, labels, loc='upper left')    
+         marker=marker, linestyle=linestyle, color=color2)
+    ax.legend(loc='upper left')
+    ax2.legend(loc='upper center')
     bm(keyopt1=keyopt1,keyopt3=keyopt3)
     if uc % 2 == 0:
         mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0) 
