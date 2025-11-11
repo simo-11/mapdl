@@ -28,6 +28,42 @@ import time
 class Model(enum.Enum):
     BEAM=1
     SOLID=2
+    
+def bm(keyopt1=0,keyopt3=0):
+    mapdl.clear()
+    mapdl.prep7()
+    mapdl.et(1,"BEAM188")
+    # https://ansyshelp.ansys.com/public/account/secured?returnurl=/Views/Secured/corp/v252/en/ans_elem/Hlp_E_BEAM188.html?q=beam188
+    # Keyopt 1:
+    # 0=No warping (default)
+    # 1=Warping included
+    #   Causes numerical issues if torsion exceeds about 2π 
+    # 2=Remove warping for closed sections
+    mapdl.keyopt(1,1,keyopt1)
+    # Keyopt 3: 
+    # shape functions along then length
+    # 0=Linear (default), migitates numerical issues partly
+    # 2=Quadratic 
+    # 3=Qubic
+    #
+    mapdl.keyopt(1,3,keyopt3)
+    mapdl.mp("EX",1,E)
+    mapdl.mp("PRXY",1,nu)
+    secid=1
+    mapdl.sectype(secid,"BEAM","HREC",'BOX',5)
+    secdata=mapdl.secdata(w,h,t,t,t,t)
+    mapdl.k(1)
+    mapdl.k(2,L)
+    mapdl.lstr(1,2)
+    mapdl.lesize("ALL",ndiv=ndiv,space=-40)
+    mapdl.lmesh("ALL")
+    mapdl.dk(kpoi=1,lab="ALL",value=0)
+    if do_plots:
+        mapdl.nplot(nnum=True, cpos="xy",
+                plot_bc=True,plot_bc_legend=True,
+                bc_labels="mechanical",
+                show_bounds=True, point_size=10)
+    return secdata
 
 """
 rotations are not supported in 0.14 (stable as of 2025-09)
@@ -47,6 +83,15 @@ def pick_results(mapdl,nlgeom=False,file=None):
     else:
         mapdl.nlgeom(key="off")
     solve_txt=mapdl.solve()
+    if nlgeom:
+        sol=mapdl.solution
+        if not sol.converged:
+            raise Exception("Solution failed, "
+                    f"converged={sol.converged},"
+                   f" moment_cnv={sol.moment_cnv:.5g},"
+                   f" n_eqit={sol.n_eqit:.0f}")
+    else:
+        sol=None
     mapdl.finish()
     mapdl.post1()
     mapdl.set(1,1)
@@ -58,7 +103,8 @@ def pick_results(mapdl,nlgeom=False,file=None):
         coords=copy.deepcopy(node_coords),
         displacement=copy.deepcopy(disp_data),
         result_file=mapdl.result_file,
-        solve_txt=solve_txt
+        solve_txt=solve_txt,
+        sol=sol
         )
     return sns
 
@@ -182,43 +228,6 @@ pymapdl_version={mapdl.info._get_pymapdl_version()}
 moment={moment}, force={force}, force_y={force_y}
 """)
 #%% debug functions
-#%% beam model
-# secdata is needed for analytical solution
-def bm(keyopt1=0,keyopt3=0):
-    mapdl.clear()
-    mapdl.prep7()
-    mapdl.et(1,"BEAM188")
-    # https://ansyshelp.ansys.com/public/account/secured?returnurl=/Views/Secured/corp/v252/en/ans_elem/Hlp_E_BEAM188.html?q=beam188
-    # Keyopt 1:
-    # 0=No warping (default)
-    # 1=Warping included
-    #   Causes numerical issues if torsion exceeds about 2π 
-    # 2=Remove warping for closed sections
-    mapdl.keyopt(1,1,keyopt1)
-    # Keyopt 3: 
-    # shape functions along then length
-    # 0=Linear (default), migitates numerical issues partly
-    # 2=Quadratic 
-    # 3=Qubic
-    #
-    mapdl.keyopt(1,3,keyopt3)
-    mapdl.mp("EX",1,E)
-    mapdl.mp("PRXY",1,nu)
-    secid=1
-    mapdl.sectype(secid,"BEAM","HREC",'BOX',5)
-    secdata=mapdl.secdata(w,h,t,t,t,t)
-    mapdl.k(1)
-    mapdl.k(2,L)
-    mapdl.lstr(1,2)
-    mapdl.lesize("ALL",ndiv=ndiv,space=-40)
-    mapdl.lmesh("ALL")
-    mapdl.dk(kpoi=1,lab="ALL",value=0)
-    if do_plots:
-        mapdl.nplot(nnum=True, cpos="xy",
-                plot_bc=True,plot_bc_legend=True,
-                bc_labels="mechanical",
-                show_bounds=True, point_size=10)
-    return secdata
 #%% beam horizontal force
 if force_y and Model.BEAM in models:
     bm()
@@ -290,6 +299,8 @@ rot_vals = np.concatenate((np.linspace(0., 1.5 * np.pi, 5),
            np.linspace(1.65*np.pi, 2 * np.pi, 5)))
 max_rot=max(rot_vals)
 xmax=180/np.pi*max_rot
+if not 'secdata' in globals():
+    secdata=bm()
 ymax=1.2*get_sec_property(secdata,'Torsion Constant')*G*max_rot/L
 fig=plt.figure(num='btol')
 fig.clear()
@@ -307,7 +318,7 @@ ax2.yaxis.set_label_position("right")
 plt.title('Reaction vs. Rotation using Ansys Beams with NLGEOM)')
 plt.grid(True)
 plt.tight_layout()
-for uc in range(1,5): # use upper limit of 4 or 5 to see failure
+for uc in range(1,3): # use upper limit of 4 or 5 to see failure
     match uc:
         case 1|2:
             keyopt1=0
@@ -475,18 +486,37 @@ scale={scale:.3g}
 qtplot(r_bt, node_labels=True)
 #%% st1
 # uses cerig
-if Model.SOLID in models:
-    mapdl.clear()
-    mapdl.prep7()
-    mapdl.et(1, 187)  # SOLID187 (quadratic tetrahedron)
-    mapdl.mp('EX', 1, E)
-    mapdl.mp('PRXY', 1, 0.3)
-    mapdl.block(0, L, 0, w, 0, h)    
-    mapdl.block(0, L,
-                t, w - t,
-                t, h - t)
-    mapdl.vsbv(1, 2)
-    mapdl.vmesh('ALL')
+if Model.SOLID in models or True:
+    target_elements = 1_000
+    tolerance = 0.10  # ±10 %
+    max_iter = 20
+    esize = 0.02
+    for i in range(max_iter):
+        mapdl.clear()
+        mapdl.prep7()
+        mapdl.et(1, 187)  # SOLID187 (quadratic tetrahedron)
+        mapdl.mp('EX', 1, E)
+        mapdl.mp('PRXY', 1, 0.3)
+        mapdl.block(0, L, 0, w, 0, h)    
+        mapdl.block(0, L,
+                    t, w - t,
+                    t, h - t)
+        mapdl.vsbv(1, 2)
+        mapdl.esize(esize)
+        mapdl.vmesh('ALL')
+        # Get number of elements
+        nelem = int(mapdl.get_value("ELEM",0, "COUNT"))
+        print(f"Iteration {i+1}: esize={esize:.3g}, elements={nelem}")
+        # Check if within tolerance
+        if abs(nelem - target_elements) / target_elements <= tolerance:
+            print("Mesh size target reached. Starting solutions")
+            break    
+        # Update esize based on error
+        scale = np.sqrt((target_elements / nelem))
+        esize /= scale
+    else:
+        raise Exception("Maximum iterations reached "
+                        "without hitting target.")
     mapdl.nsel('S', 'LOC', 'X', 0)
     mapdl.d('ALL', 'ALL', 0)
     cerig_master_node=mapdl.n(x=L, y=w/2, z=h/2)
@@ -502,10 +532,10 @@ if Model.SOLID in models:
     mapdl.f(cerig_master_node,'MX',moment)
     mapdl.allsel()
     r_st1=pick_results(mapdl,file='st1')
-    r_st1_nl=pick_results(mapdl,True,'st1_nl')
     r_st1.rfe=r_st1.displacement[cerig_master_node-1][3]*180/np.pi
     print(("Rotation at free end using solid with nlgeom=off (st1)"
            f"{r_st1.rfe:.4g}°"))
+    r_st1_nl=pick_results(mapdl,True,'st1_nl')
     r_st1_nl.rfe=r_st1_nl.displacement[cerig_master_node-1][3]*180/np.pi
     print(("Rotation at free end using solid with nlgeom=on (st1_nl)"
            f"{r_st1_nl.rfe:.4g}°"))
