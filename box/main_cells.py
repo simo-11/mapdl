@@ -228,6 +228,51 @@ pymapdl_version={mapdl.info._get_pymapdl_version()}
 moment={moment}, force={force}, force_y={force_y}
 """)
 #%% debug functions
+#%% secdata
+mapdl.clear()
+mapdl.prep7()
+for refinekey in range(0,6):
+    secid=refinekey
+    start=time.time()
+    mapdl.sectype(secid,"BEAM","HREC",f'BOX{refinekey}',refinekey)
+    sd=mapdl.secdata(w,h,t,t,t,t)
+    end=time.time()
+    It=get_sec_property(sd,'Torsion Constant')
+    Iw=get_sec_property(sd,'Warping Constant')
+    print("{0} & {1:.4g} & {2:.4g} & {3:.2g} \\\\".
+          format(refinekey,
+      1e6*It,
+      1e9*Iw,
+      (end-start)
+      ))
+et=mapdl.et(ename='plane183')
+for ec_in_h in range(10,40,5):
+    mapdl.asel('all')
+    mapdl.aclear('all')
+    mapdl.adele('all')
+    anum0 = mapdl.blc4(0, 0, w, h)
+    anum1 = mapdl.blc4(t, t, w-2*t, h-2*t)
+    aout = mapdl.asba(anum0, anum1)
+    name=f'BOX{ec_in_h}'
+    fname=f'mesh_{name}'
+    secid=secid+1
+    start=time.time()
+    lesize=h/ec_in_h
+    mapdl.lesize('all',lesize)
+    mapdl.amesh('all')
+    nnodes = int(mapdl.get_value("NODES",0, "COUNT"))
+    mapdl.secwrite(fname=fname,elem_type=et)
+    mapdl.sectype(secid,"BEAM","MESH",name)
+    mapdl.secread(fname=fname,option='mesh')
+    end=time.time()
+    It=mapdl.get_value('secp',secid,'prop','tors')
+    Iw=mapdl.get_value('secp',secid,'prop','warp')
+    print("{0} & {1:.4g} & {2:.4g} & {3:.2g} \\\\".
+          format(nnodes,
+      1e6*It,
+      1e9*Iw,
+      (end-start)
+      ))    
 #%% beam horizontal force
 if force_y and Model.BEAM in models:
     bm()
