@@ -165,7 +165,7 @@ def stop_ansys():
 
 def check_global_mapdl():
     if not 'mapdl' in globals():
-        print("global mapdl is not defined")
+        print("global mapdl is not defined, ansys process will be started")
         return
     global mapdl
     timeout=2
@@ -295,7 +295,7 @@ if force and Model.BEAM in models:
 #%% beam torsion bt
 if Model.BEAM in models:    
     _moment=moment
-    bm()
+    bm(keyopt1=1)
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",value=0)    
     mapdl.fk(2,"MX",_moment)
     print(f"Torsional load of {_moment} for beam (bt) is processed")
@@ -309,7 +309,7 @@ if Model.BEAM in models:
 # warping constrained at loaded end
 if Model.BEAM in models:
     _moment=moment
-    bm()
+    bm(keyopt1=1)
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",value=0)
     mapdl.fk(2,"MX",_moment)
     print(f"Torsional load of {_moment} for beam (bt1) is processed")
@@ -325,7 +325,23 @@ if Model.BEAM in models:
 uc='bt2'
 if Model.BEAM in models:
     _moment=moment
-    bm()
+    bm(keyopt1=1)
+    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
+    mapdl.fk(2,"MX",_moment)
+    print(f"Torsional moment of {_moment} for beam ({uc}) is processed")
+    r_bt2=pick_results(mapdl,file=f'{uc}')
+    r_bt2.rfe=r_bt2.displacement[1][3]*180/np.pi
+    print(f"Rotation for {uc} with nlgeom=off ({uc}) {r_bt2.rfe:.4g}°")
+    r_bt2_nl=pick_results(mapdl,True,file=f'{uc}_nl')
+    r_bt2_nl.rfe=r_bt2_nl.displacement[1][3]*180/np.pi
+    print((f"Rotation for {uc} with nlgeom=on ({uc}_nl)"
+           f" {r_bt2_nl.rfe:.4g}°"))
+#%% bt3 
+# warping excluded
+uc='bt3'
+if Model.BEAM in models:
+    _moment=moment
+    bm(keyopt1=0)
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
     mapdl.fk(2,"MX",_moment)
     print(f"Torsional moment of {_moment} for beam ({uc}) is processed")
@@ -530,12 +546,18 @@ scale={scale:.3g}
 #%% debug cell
 qtplot(r_bt, node_labels=True)
 #%% st1
-# uses cerig
+# uses cerig which is not compatible with large displacments
 if Model.SOLID in models or True:
-    target_elements = 1_000
+    do_nlgeom=False
+    target_nodes = 110_000
     tolerance = 0.10  # ±10 %
     max_iter = 20
-    esize = 0.02
+    if target_nodes <= 1000:
+        esize=0.12
+    elif target_nodes <=30_000:
+        esize = 0.02
+    elif target_nodes <=120_000:
+        esize=0.015
     for i in range(max_iter):
         mapdl.clear()
         mapdl.prep7()
@@ -550,14 +572,14 @@ if Model.SOLID in models or True:
         mapdl.esize(esize)
         mapdl.vmesh('ALL')
         # Get number of elements
-        nelem = int(mapdl.get_value("ELEM",0, "COUNT"))
-        print(f"Iteration {i+1}: esize={esize:.3g}, elements={nelem}")
+        nnodes= int(mapdl.get_value("NODE",0, "COUNT"))
+        print(f"Iteration {i+1}: esize={esize:.3g}, nodes={nnodes}")
         # Check if within tolerance
-        if abs(nelem - target_elements) / target_elements <= tolerance:
-            print("Mesh size target reached. Starting solutions")
+        if abs(nnodes - target_nodes) / target_nodes <= tolerance:
+            print("Mesh size target reached. Starting solution")
             break    
         # Update esize based on error
-        scale = np.sqrt((target_elements / nelem))
+        scale = np.sqrt((target_nodes / nnodes))
         esize /= scale
     else:
         raise Exception("Maximum iterations reached "
@@ -580,15 +602,18 @@ if Model.SOLID in models or True:
     r_st1.rfe=r_st1.displacement[cerig_master_node-1][3]*180/np.pi
     print(("Rotation at free end using solid with nlgeom=off (st1)"
            f"{r_st1.rfe:.4g}°"))
-    r_st1_nl=pick_results(mapdl,True,'st1_nl')
-    r_st1_nl.rfe=r_st1_nl.displacement[cerig_master_node-1][3]*180/np.pi
-    print(("Rotation at free end using solid with nlgeom=on (st1_nl)"
-           f"{r_st1_nl.rfe:.4g}°"))
+    if do_nlgeom:
+        r_st1_nl=pick_results(mapdl,True,'st1_nl')
+        r_st1_nl.rfe=r_st1_nl.displacement[cerig_master_node-1][3]*180/np.pi
+        print(("Rotation at free end using solid with nlgeom=on (st1_nl)"
+               f"{r_st1_nl.rfe:.4g}°"))
     if do_plots:
         dpf1(r_st1)
-        dpf1(r_st1_nl)
+        if do_nlgeom:
+            dpf1(r_st1_nl)
         dpf2(r_st1)
-        dpf2(r_st1_nl)
+        if do_nlgeom:
+            dpf2(r_st1_nl)
 #%% st2
 # uses ce:s which allow shrinking and expansion of cross section
 if Model.SOLID in models:
