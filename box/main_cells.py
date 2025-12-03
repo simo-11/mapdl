@@ -545,15 +545,14 @@ scale={scale:.3g}
     return (plotter,scale)
 #%% debug cell
 qtplot(r_bt, node_labels=True)
-#%% st1
-# uses cerig which is not compatible with large displacments
-if Model.SOLID in models or True:
-    do_nlgeom=False
-    target_nodes = 110_000
-    tolerance = 0.10  # ±10 %
-    max_iter = 20
+#%% solid_mesh
+def solid_mesh(target_nodes=20_000, tolerance = 0.10, max_iter = 20):
     if target_nodes <= 1000:
         esize=0.12
+    elif target_nodes <=10_000:
+        esize = 0.034
+    elif target_nodes <=20_000:
+        esize = 0.024
     elif target_nodes <=30_000:
         esize = 0.02
     elif target_nodes <=120_000:
@@ -573,17 +572,23 @@ if Model.SOLID in models or True:
         mapdl.vmesh('ALL')
         # Get number of elements
         nnodes= int(mapdl.get_value("NODE",0, "COUNT"))
-        print(f"Iteration {i+1}: esize={esize:.3g}, nodes={nnodes}")
         # Check if within tolerance
         if abs(nnodes - target_nodes) / target_nodes <= tolerance:
-            print("Mesh size target reached. Starting solution")
-            break    
+            print(f"Mesh size target {target_nodes} "
+                  f"±{100*tolerance:g} % reached. ")
+            break
+        print(f"Iteration {i+1}: esize={esize:.3g}, nodes={nnodes}")
         # Update esize based on error
         scale = np.sqrt((target_nodes / nnodes))
         esize /= scale
     else:
         raise Exception("Maximum iterations reached "
                         "without hitting target.")
+#%% st1
+# uses cerig which is not compatible with large displacments
+if Model.SOLID in models or True:
+    do_nlgeom=False
+    solid_mesh(20_000)
     mapdl.nsel('S', 'LOC', 'X', 0)
     mapdl.d('ALL', 'ALL', 0)
     cerig_master_node=mapdl.n(x=L, y=w/2, z=h/2)
@@ -608,23 +613,54 @@ if Model.SOLID in models or True:
         print(("Rotation at free end using solid with nlgeom=on (st1_nl)"
                f"{r_st1_nl.rfe:.4g}°"))
     if do_plots:
-        dpf1(r_st1)
+        qtplot(r_st1,scale=1)
         if do_nlgeom:
-            dpf1(r_st1_nl)
-        dpf2(r_st1)
-        if do_nlgeom:
-            dpf2(r_st1_nl)
+            qtplot(r_st1_nl,scale=1)
 #%% st2
-# uses ce:s which allow shrinking and expansion of cross section
-if Model.SOLID in models:
+# uses surfbased rigid constraint
+# https://ansyshelp.ansys.com/public/account/secured?returnurl=///Views/Secured/corp/v252/en/ans_ctec/Hlp_ctec_surfcon.html
+uc='st2'
+uc_nl=f"{uc}_nl"
+if Model.SOLID in models or True:
+    do_nlgeom=False
+    t_start=time.time()
+    solid_mesh(10_000)
+    mapdl.nsel('S', 'LOC', 'X', 0)
+    mapdl.d('ALL', 'ALL', 0)
+    cerig_master_node=mapdl.n(x=L, y=w/2, z=h/2)
+    mapdl.et(2,'MASS21')
+    mapdl.type(2)
+    mapdl.tshap('POINT')
+    mapdl.r(1)
+    mapdl.e(cerig_master_node)
+    mapdl.nsel('S', 'LOC', 'X', L)
+    mapdl.cm('free_end', 'NODE')
+    mapdl.run('CMSEL, S, free_end')
+    mapdl.run(f'CERIG, {cerig_master_node}, ALL, UY, UZ')
+    mapdl.f(cerig_master_node,'MX',moment)
     mapdl.allsel()
-    r_st2=pick_results(mapdl,file='st2')
-    r_st2_nl=pick_results(mapdl,True,'st2_nl')   
+    t_model=time.time()
+    r_lin=pick_results(mapdl,file=uc)
+    t_lin=time.time()
+    globals()[f"r_{uc}"]=r_lin
+    r_lin.rfe=r_lin.displacement[cerig_master_node-1][3]*180/np.pi 
+    print(f"Rotation at free end using solid with nlgeom=off({uc})"
+          f" {r_lin.rfe:.4g}°"
+          f" elapsed={t_lin-t_model:.2g} s"
+          )
+    if do_nlgeom:
+        r_nl=pick_results(mapdl,True,uc_nl)
+        t_nl=time.time()
+        globals()[f"r_{uc_nl}"]=r_nl
+        r_nl.rfe=r_nl.displacement[cerig_master_node-1][3]*180/np.pi
+        print(f"Rotation at free end using solid with nlgeom=on({uc}_nl)"
+          f" {r_nl.rfe:.4g}°"
+          f" elapsed={t_nl-t_lin:.2g} s"
+          )
     if do_plots:
-        dpf1(r_st2)
-        dpf1(r_st2_nl)
-        dpf2(r_st2)
-        dpf2(r_st2_nl)     
+        qtplot(r_lin,scale=1)
+        if do_nlgeom:
+            qtplot(r_nl,scale=1)
 #%% plot results
 def get_sorted_node_numbers(result):
     nnum=result.mesh.nnum
