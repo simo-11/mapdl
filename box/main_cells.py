@@ -624,26 +624,56 @@ uc_nl=f"{uc}_nl"
 if Model.SOLID in models or True:
     do_nlgeom=False
     t_start=time.time()
-    solid_mesh(10_000)
+    solid_mesh(1_000)
     mapdl.nsel('S', 'LOC', 'X', 0)
     mapdl.d('ALL', 'ALL', 0)
-    cerig_master_node=mapdl.n(x=L, y=w/2, z=h/2)
-    mapdl.et(2,'MASS21')
-    mapdl.type(2)
-    mapdl.tshap('POINT')
-    mapdl.r(1)
-    mapdl.e(cerig_master_node)
     mapdl.nsel('S', 'LOC', 'X', L)
-    mapdl.cm('free_end', 'NODE')
-    mapdl.run('CMSEL, S, free_end')
-    mapdl.run(f'CERIG, {cerig_master_node}, ALL, UY, UZ')
-    mapdl.f(cerig_master_node,'MX',moment)
+    master_node=mapdl.n(x=L, y=w/2, z=h/2)
+    """    From workbench ds.dat
+    *set,tid,3
+    *set,cid,2
+    et,cid,174
+    et,tid,170
+    keyo,tid,2,1               ! Don't fix the pilot node
+    keyo,tid,4,0               ! Activate all DOF's due to large deformation
+    keyo,cid,12,5              ! Bonded Contact 
+    keyo,cid,4,1               ! Deformable RBE3 style load
+    keyo,cid,2,2               ! MPC style contact
+    """
+    mapdl.et(2,174)
+    mapdl.keyopt(2,12,5)
+    mapdl.keyopt(2,4,1)
+    mapdl.keyopt(2,2,2)
+    mapdl.et(3, 170)
+    mapdl.keyopt(3,2,1)
+    mapdl.keyopt(3,4,0)
+    mapdl.type(2)
+    mapdl.real(2)
+    mapdl.mat(2)
+    mapdl.esurf('ALL')
+    """
+    type,tid
+    mat ,cid
+    real,cid
+    tshape,pilo
+    en,86660,_npilot
+    tshape   
+    """
+    mapdl.type(3)
+    mapdl.mat(2)
+    mapdl.real(2)
+    mapdl.tshap(shape='pilo')
+    mapdl.e(master_node)
+    """
+    
+    """
+    mapdl.f(master_node,'MX',moment)
     mapdl.allsel()
     t_model=time.time()
     r_lin=pick_results(mapdl,file=uc)
     t_lin=time.time()
     globals()[f"r_{uc}"]=r_lin
-    r_lin.rfe=r_lin.displacement[cerig_master_node-1][3]*180/np.pi 
+    r_lin.rfe=r_lin.displacement[master_node-1][3]*180/np.pi 
     print(f"Rotation at free end using solid with nlgeom=off({uc})"
           f" {r_lin.rfe:.4g}°"
           f" elapsed={t_lin-t_model:.2g} s"
@@ -652,7 +682,7 @@ if Model.SOLID in models or True:
         r_nl=pick_results(mapdl,True,uc_nl)
         t_nl=time.time()
         globals()[f"r_{uc_nl}"]=r_nl
-        r_nl.rfe=r_nl.displacement[cerig_master_node-1][3]*180/np.pi
+        r_nl.rfe=r_nl.displacement[master_node-1][3]*180/np.pi
         print(f"Rotation at free end using solid with nlgeom=on({uc}_nl)"
           f" {r_nl.rfe:.4g}°"
           f" elapsed={t_nl-t_lin:.2g} s"
