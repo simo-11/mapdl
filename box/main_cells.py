@@ -16,6 +16,7 @@ from ansys.dpf import core as dpf
 from ansys.dpf import post
 from ansys.dpf.core import operators#noqa
 import matplotlib.pyplot as plt
+import pyvista as pv
 from matplotlib.markers import MarkerStyle
 import numpy as np
 import types
@@ -94,9 +95,10 @@ def pick_results(mapdl,nlgeom=False,file=None):
         sol=None
     mapdl.finish()
     mapdl.post1()
-    mapdl.set(1,1)
+    set_list=mapdl.set('list')
+    last_step=set_list.to_array().shape[0]-1
     node_coords=mapdl.mesh.nodes
-    node_ids,disp_data=mapdl.result.nodal_displacement(0)
+    node_ids,disp_data=mapdl.result.nodal_displacement(last_step)
     sns=types.SimpleNamespace(
         file=file,
         nnum=copy.deepcopy(node_ids),
@@ -104,7 +106,8 @@ def pick_results(mapdl,nlgeom=False,file=None):
         displacement=copy.deepcopy(disp_data),
         result_file=mapdl.result_file,
         solve_txt=solve_txt,
-        sol=sol
+        sol=sol,
+        set_list=set_list
         )
     return sns
 
@@ -220,11 +223,13 @@ sharp_corners=True
 do_plots=False
 if not do_plots:
     plt.close('all')
+pvi=pv.version_info    
 print(f"""BOX with h={h}, w={w}, t={t}, L={L} is active
 E={E:.3G}, nu={nu:.3G}
 models={models}
 do_plots={do_plots}
 pymapdl_version={mapdl.info._get_pymapdl_version()}
+pyvista_version={pvi[0]}.{pvi[1]}.{pvi[2]}
 moment={moment}, force={force}, force_y={force_y}
 """)
 #%% debug functions
@@ -605,13 +610,13 @@ if Model.SOLID in models or True:
     mapdl.allsel()
     r_st1=pick_results(mapdl,file='st1')
     r_st1.rfe=r_st1.displacement[cerig_master_node-1][3]*180/np.pi
-    print(("Rotation at free end using solid with nlgeom=off (st1)"
-           f"{r_st1.rfe:.4g}°"))
+    print(("Rotation at free end using solid with nlgeom=off(st1)"
+           f" {r_st1.rfe:.4g}°"))
     if do_nlgeom:
         r_st1_nl=pick_results(mapdl,True,'st1_nl')
         r_st1_nl.rfe=r_st1_nl.displacement[cerig_master_node-1][3]*180/np.pi
-        print(("Rotation at free end using solid with nlgeom=on (st1_nl)"
-               f"{r_st1_nl.rfe:.4g}°"))
+        print(("Rotation at free end using solid with nlgeom=on(st1_nl)"
+               f" {r_st1_nl.rfe:.4g}°"))
     if do_plots:
         qtplot(r_st1,scale=1)
         if do_nlgeom:
@@ -622,13 +627,13 @@ if Model.SOLID in models or True:
 uc='st2'
 uc_nl=f"{uc}_nl"
 if Model.SOLID in models or True:
-    do_nlgeom=False
+    do_nlgeom=True
     t_start=time.time()
-    solid_mesh(1_000)
+    solid_mesh(10_000)
     mapdl.nsel('S', 'LOC', 'X', 0)
     mapdl.d('ALL', 'ALL', 0)
-    mapdl.nsel('S', 'LOC', 'X', L)
     master_node=mapdl.n(x=L, y=w/2, z=h/2)
+    mapdl.nsel('S', 'LOC', 'X', L)
     """    From workbench ds.dat
     *set,tid,3
     *set,cid,2
@@ -637,7 +642,7 @@ if Model.SOLID in models or True:
     keyo,tid,2,1               ! Don't fix the pilot node
     keyo,tid,4,0               ! Activate all DOF's due to large deformation
     keyo,cid,12,5              ! Bonded Contact 
-    keyo,cid,4,1               ! Deformable RBE3 style load
+    keyo,cid,4,1               ! 1=Deformable RBE3 style load, 2=rigid
     keyo,cid,2,2               ! MPC style contact
     """
     mapdl.et(2,174)
@@ -681,7 +686,7 @@ if Model.SOLID in models or True:
     if do_nlgeom:
         r_nl=pick_results(mapdl,True,uc_nl)
         t_nl=time.time()
-        globals()[f"r_{uc_nl}"]=r_nl
+        globals()[f"r_{uc}_nl"]=r_nl
         r_nl.rfe=r_nl.displacement[master_node-1][3]*180/np.pi
         print(f"Rotation at free end using solid with nlgeom=on({uc}_nl)"
           f" {r_nl.rfe:.4g}°"
