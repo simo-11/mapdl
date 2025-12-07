@@ -550,7 +550,10 @@ scale={scale:.3g}
     return (plotter,scale)
 #%% debug cell
 qtplot(r_bt, node_labels=True)
-#%% solid_mesh
+#%% support functions for solids
+class Behaviour(enum.Enum):
+    DEFORMABLE=1
+    RIGID=2
 def solid_mesh(target_nodes=20_000, tolerance = 0.10, max_iter = 20):
     if target_nodes <= 1000:
         esize=0.12
@@ -560,8 +563,14 @@ def solid_mesh(target_nodes=20_000, tolerance = 0.10, max_iter = 20):
         esize = 0.024
     elif target_nodes <=30_000:
         esize = 0.02
+    elif target_nodes <=51_000:
+        esize = 0.0156
+    elif target_nodes <=100_000:
+        esize=0.011
     elif target_nodes <=120_000:
-        esize=0.015
+        esize=0.01
+    else:
+        esize=0.01/np.sqrt(target_nodes/120_000)    
     for i in range(max_iter):
         mapdl.clear()
         mapdl.prep7()
@@ -579,8 +588,9 @@ def solid_mesh(target_nodes=20_000, tolerance = 0.10, max_iter = 20):
         nnodes= int(mapdl.get_value("NODE",0, "COUNT"))
         # Check if within tolerance
         if abs(nnodes - target_nodes) / target_nodes <= tolerance:
-            print(f"Mesh size target {target_nodes} "
-                  f"±{100*tolerance:g} % reached. ")
+            print(f"Mesh size target {target_nodes} nodes "
+                  f"±{100*tolerance:g} % reached with {nnodes} nodes "
+                  f"and esize={esize:.3g}")
             break
         print(f"Iteration {i+1}: esize={esize:.3g}, nodes={nnodes}")
         # Update esize based on error
@@ -589,6 +599,49 @@ def solid_mesh(target_nodes=20_000, tolerance = 0.10, max_iter = 20):
     else:
         raise Exception("Maximum iterations reached "
                         "without hitting target.")
+# https://ansyshelp.ansys.com/public/account/secured?returnurl=///Views/Secured/corp/v252/en/ans_ctec/Hlp_ctec_surfcon.html        
+def add_remote_point(x=L, y=w/2, z=h/2,behaviour=Behaviour.DEFORMABLE):        
+    master_node=mapdl.n(x=x, y=y, z=z)
+    mapdl.nsel('S', 'LOC', 'X', L)
+    """    From workbench ds.dat
+    *set,tid,3
+    *set,cid,2
+    et,cid,174
+    et,tid,170
+    keyo,tid,2,1               ! Don't fix the pilot node
+    keyo,tid,4,0               ! Activate all DOF's due to large deformation
+    keyo,cid,12,5              ! Bonded Contact 
+    keyo,cid,4,1               ! 1=Deformable RBE3 style load, 2=rigid
+    keyo,cid,2,2               ! MPC style contact
+    """
+    mapdl.et(2,174)
+    mapdl.keyopt(2,12,5)
+    match behaviour:
+        case Behaviour.DEFORMABLE: keyopt4=1
+        case Behaviour.RIGID: keyopt4=2
+    mapdl.keyopt(2,4,keyopt4)
+    mapdl.keyopt(2,2,2)
+    mapdl.et(3, 170)
+    mapdl.keyopt(3,2,1)
+    mapdl.keyopt(3,4,0)
+    mapdl.type(2)
+    mapdl.real(2)
+    mapdl.mat(2)
+    mapdl.esurf('ALL')
+    """
+    type,tid
+    mat ,cid
+    real,cid
+    tshape,pilo
+    en,86660,_npilot
+    tshape   
+    """
+    mapdl.type(3)
+    mapdl.mat(2)
+    mapdl.real(2)
+    mapdl.tshap(shape='pilo')
+    mapdl.e(master_node)
+    return master_node        
 #%% st1
 # uses cerig which is not compatible with large displacments
 if Model.SOLID in models or True:
@@ -622,56 +675,53 @@ if Model.SOLID in models or True:
         if do_nlgeom:
             qtplot(r_st1_nl,scale=1)
 #%% st2
-# uses surfbased rigid constraint
-# https://ansyshelp.ansys.com/public/account/secured?returnurl=///Views/Secured/corp/v252/en/ans_ctec/Hlp_ctec_surfcon.html
+# uses surface based deformable constraint
 uc='st2'
 uc_nl=f"{uc}_nl"
 if Model.SOLID in models or True:
-    do_nlgeom=True
+    do_nlgeom=False
     t_start=time.time()
-    solid_mesh(10_000)
+    solid_mesh(20_000)
     mapdl.nsel('S', 'LOC', 'X', 0)
     mapdl.d('ALL', 'ALL', 0)
-    master_node=mapdl.n(x=L, y=w/2, z=h/2)
-    mapdl.nsel('S', 'LOC', 'X', L)
-    """    From workbench ds.dat
-    *set,tid,3
-    *set,cid,2
-    et,cid,174
-    et,tid,170
-    keyo,tid,2,1               ! Don't fix the pilot node
-    keyo,tid,4,0               ! Activate all DOF's due to large deformation
-    keyo,cid,12,5              ! Bonded Contact 
-    keyo,cid,4,1               ! 1=Deformable RBE3 style load, 2=rigid
-    keyo,cid,2,2               ! MPC style contact
-    """
-    mapdl.et(2,174)
-    mapdl.keyopt(2,12,5)
-    mapdl.keyopt(2,4,1)
-    mapdl.keyopt(2,2,2)
-    mapdl.et(3, 170)
-    mapdl.keyopt(3,2,1)
-    mapdl.keyopt(3,4,0)
-    mapdl.type(2)
-    mapdl.real(2)
-    mapdl.mat(2)
-    mapdl.esurf('ALL')
-    """
-    type,tid
-    mat ,cid
-    real,cid
-    tshape,pilo
-    en,86660,_npilot
-    tshape   
-    """
-    mapdl.type(3)
-    mapdl.mat(2)
-    mapdl.real(2)
-    mapdl.tshap(shape='pilo')
-    mapdl.e(master_node)
-    """
-    
-    """
+    master_node=add_remote_point(x=L, y=w/2, z=h/2,
+                                 behaviour=Behaviour.DEFORMABLE)
+    mapdl.f(master_node,'MX',moment)
+    mapdl.allsel()
+    t_model=time.time()
+    r_lin=pick_results(mapdl,file=uc)
+    t_lin=time.time()
+    globals()[f"r_{uc}"]=r_lin
+    r_lin.rfe=r_lin.displacement[master_node-1][3]*180/np.pi 
+    print(f"Rotation at free end using solid with nlgeom=off({uc})"
+          f" {r_lin.rfe:.4g}°"
+          f" elapsed={t_lin-t_model:.2g} s"
+          )
+    if do_nlgeom:
+        r_nl=pick_results(mapdl,True,uc_nl)
+        t_nl=time.time()
+        globals()[f"r_{uc}_nl"]=r_nl
+        r_nl.rfe=r_nl.displacement[master_node-1][3]*180/np.pi
+        print(f"Rotation at free end using solid with nlgeom=on({uc}_nl)"
+          f" {r_nl.rfe:.4g}°"
+          f" elapsed={t_nl-t_lin:.2g} s"
+          )
+    if do_plots:
+        qtplot(r_lin,scale=1)
+        if do_nlgeom:
+            qtplot(r_nl,scale=1)
+#%% st3
+# uses surface based rigid constraint
+uc='st3'
+uc_nl=f"{uc}_nl"
+if Model.SOLID in models or True:
+    do_nlgeom=False
+    t_start=time.time()
+    solid_mesh(20_000)
+    mapdl.nsel('S', 'LOC', 'X', 0)
+    mapdl.d('ALL', 'ALL', 0)
+    master_node=add_remote_point(x=L, y=w/2, z=h/2,
+                                 behaviour=Behaviour.RIGID)
     mapdl.f(master_node,'MX',moment)
     mapdl.allsel()
     t_model=time.time()
