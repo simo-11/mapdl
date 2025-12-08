@@ -88,9 +88,9 @@ def pick_results(mapdl,nlgeom=False,file=None):
         sol=mapdl.solution
         if not sol.converged:
             raise Exception("Solution failed, "
-                    f"converged={sol.converged},"
-                   f" moment_cnv={sol.moment_cnv:.5g},"
-                   f" n_eqit={sol.n_eqit:.0f}")
+                f"converged={sol.converged},"
+                f" moment_cnv={sol.moment_cnv:.5g},"
+                f" n_eqit={sol.n_eqit:.0f}")
     else:
         sol=None
     mapdl.finish()
@@ -234,6 +234,7 @@ moment={moment}, force={force}, force_y={force_y}
 """)
 #%% debug functions
 #%% secdata
+print("refinekey or number of nodes & It & Iw & Solution time")
 mapdl.clear()
 mapdl.prep7()
 for refinekey in range(0,6):
@@ -360,7 +361,9 @@ if Model.BEAM in models:
 #%% btol
 # displacement constraint at loaded end and keyopts varied
 # if warping is included solution fails for rot_vals n*2*pi
-# 
+"""
+# Currently commented out as an supplementary study
+# related to numerical issues with beam with warping included
 rot_vals = np.concatenate((np.linspace(0., 1.5 * np.pi, 5),
            np.linspace(1.65*np.pi, 2 * np.pi, 5)))
 max_rot=max(rot_vals)
@@ -458,7 +461,8 @@ for uc in range(1,3): # use upper limit of 4 or 5 to see failure
             fig.canvas.flush_events()
             plt.pause(0.05)    
     except Exception as e:
-        print(f"Solve failed for {rv} due to {e}")        
+        print(f"Solve failed for {rv} due to {e}") 
+"""        
 #%% qtplot
 from pyvistaqt import BackgroundPlotter
 import numpy as np
@@ -602,7 +606,7 @@ def solid_mesh(target_nodes=20_000, tolerance = 0.10, max_iter = 20):
 # https://ansyshelp.ansys.com/public/account/secured?returnurl=///Views/Secured/corp/v252/en/ans_ctec/Hlp_ctec_surfcon.html        
 def add_remote_point(x=L, y=w/2, z=h/2,behaviour=Behaviour.DEFORMABLE):        
     master_node=mapdl.n(x=x, y=y, z=z)
-    mapdl.nsel('S', 'LOC', 'X', L)
+    mapdl.nsel('S', 'LOC', 'X', x)
     """    From workbench ds.dat
     *set,tid,3
     *set,cid,2
@@ -644,36 +648,48 @@ def add_remote_point(x=L, y=w/2, z=h/2,behaviour=Behaviour.DEFORMABLE):
     return master_node        
 #%% st1
 # uses cerig which is not compatible with large displacments
+uc='st1'
+uc_nl=f"{uc}_nl"
 if Model.SOLID in models or True:
     do_nlgeom=False
+    t_start=time.time()    
     solid_mesh(20_000)
     mapdl.nsel('S', 'LOC', 'X', 0)
     mapdl.d('ALL', 'ALL', 0)
-    cerig_master_node=mapdl.n(x=L, y=w/2, z=h/2)
+    master_node=mapdl.n(x=L, y=w/2, z=h/2)
     mapdl.et(2,'MASS21')
     mapdl.type(2)
     mapdl.tshap('POINT')
     mapdl.r(1)
-    mapdl.e(cerig_master_node)
+    mapdl.e(master_node)
     mapdl.nsel('S', 'LOC', 'X', L)
     mapdl.cm('free_end', 'NODE')
     mapdl.run('CMSEL, S, free_end')
-    mapdl.run(f'CERIG, {cerig_master_node}, ALL, UY, UZ')
-    mapdl.f(cerig_master_node,'MX',moment)
+    mapdl.run(f'CERIG, {master_node}, ALL, UY, UZ')
+    mapdl.f(master_node,'MX',moment)
     mapdl.allsel()
-    r_st1=pick_results(mapdl,file='st1')
-    r_st1.rfe=r_st1.displacement[cerig_master_node-1][3]*180/np.pi
-    print(("Rotation at free end using solid with nlgeom=off(st1)"
-           f" {r_st1.rfe:.4g}°"))
+    t_model=time.time()    
+    r_lin=pick_results(mapdl,file=uc)
+    t_lin=time.time()
+    globals()[f"r_{uc}"]=r_lin
+    r_lin.rfe=r_lin.displacement[master_node-1][3]*180/np.pi 
+    print(f"Rotation at free end using solid with nlgeom=off({uc})"
+          f" {r_lin.rfe:.4g}°"
+          f" elapsed={t_lin-t_model:.2g} s"
+          )
     if do_nlgeom:
-        r_st1_nl=pick_results(mapdl,True,'st1_nl')
-        r_st1_nl.rfe=r_st1_nl.displacement[cerig_master_node-1][3]*180/np.pi
-        print(("Rotation at free end using solid with nlgeom=on(st1_nl)"
-               f" {r_st1_nl.rfe:.4g}°"))
+        r_nl=pick_results(mapdl,True,uc_nl)
+        t_nl=time.time()
+        globals()[f"r_{uc}_nl"]=r_nl
+        r_nl.rfe=r_nl.displacement[master_node-1][3]*180/np.pi
+        print(f"Rotation at free end using solid with nlgeom=on({uc}_nl)"
+          f" {r_nl.rfe:.4g}°"
+          f" elapsed={t_nl-t_lin:.2g} s"
+          )
     if do_plots:
-        qtplot(r_st1,scale=1)
+        qtplot(r_lin,scale=1)
         if do_nlgeom:
-            qtplot(r_st1_nl,scale=1)
+            qtplot(r_nl,scale=1)
 #%% st2
 # uses surface based deformable constraint
 uc='st2'
@@ -774,23 +790,13 @@ def plot_result(fig,ax,result,index,**kwargs):
     # Plot
     ax.plot(x_vals, vals, **kwargs)
 
-def plot_solid_result(fig,ax,result,index,label):
-    raise Exception("Not done")
-    sorted_node_numbers=get_sorted_node_numbers(result)
-    size=result.mesh.nnum.size
-    xvs=result.mesh.nodes[:,0]
-    nd=result.nodal_displacement[1][:,index]
-    xv=np.zeros(size).tolist()
-    yv=np.zeros(size).tolist()
-    i=0
-    for nn in sorted_node_numbers:
-        ni=nn-1
-        xv[i]=xvs[ni]
-        yv[i]=nd[ni]
-        i=i+1
-    ax.plot(xv,yv,label=label)
-
-
+def plot_solid_result(fig,ax,r):
+    ax.plot(r.probes_x, r.probes_rotation
+                    ,label=r.file
+                    ,marker=MarkerStyle((3,0,0))
+                    ,markevery=(0.02,0.2)
+                    )
+    
 def add_analytical_bending(ax,I):
     xv=np.linspace(0,L)
     yv=force*np.pow(L,3)/(6*E*I)*(2-3*(L-xv)/L+np.pow((L-xv)/L,3))
@@ -882,10 +888,15 @@ if moment:
                     ,marker=MarkerStyle((5,2,0))
                     ,markevery=(0.17,0.2)
                     )
-    if 'r_st1' in vars() and False:
-        plot_solid_result(fig_t,ax_t,r_st1,5,'solid187-cerig(st1)')
-    if 'r_st1_nl' in vars() and False:
-        plot_solid_result(fig_t,ax_t,r_st1_nl,5,'solid187-cerig(st1)')
+    for name in globals():
+        if not name.startswith('r_st'):
+            continue
+        r=globals()[name]
+        if not hasattr(r,'probes_x'):
+            continue
+        if not hasattr(r,'probes_rotation'):
+            continue
+        plot_solid_result(fig_t,ax_t,r)
     add_analytical_rotation(ax_t,
                            get_sec_property(secdata,'Torsion Constant'),
                            get_sec_property(secdata,'Warping Constant'))
