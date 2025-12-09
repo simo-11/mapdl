@@ -603,6 +603,16 @@ def solid_mesh(target_nodes=20_000, tolerance = 0.10, max_iter = 20):
     else:
         raise Exception("Maximum iterations reached "
                         "without hitting target.")
+    mapdl.nsel('all')
+    mapdl.nsel('S','LOC','y',0)
+    mapdl.nsel('R','loc','z',0)
+    nlist=mapdl.nlist('all')
+    x=np.sort(nlist.to_array()[:,1])
+    probes=types.SimpleNamespace(
+        x=x
+        )
+    mapdl.nsel('all')
+    return probes
 # https://ansyshelp.ansys.com/public/account/secured?returnurl=///Views/Secured/corp/v252/en/ans_ctec/Hlp_ctec_surfcon.html        
 def add_remote_point(x=L, y=w/2, z=h/2,behaviour=Behaviour.DEFORMABLE):        
     master_node=mapdl.n(x=x, y=y, z=z)
@@ -733,7 +743,7 @@ uc_nl=f"{uc}_nl"
 if Model.SOLID in models or True:
     do_nlgeom=False
     t_start=time.time()
-    solid_mesh(20_000)
+    probes=solid_mesh(20_000)
     mapdl.nsel('S', 'LOC', 'X', 0)
     mapdl.d('ALL', 'ALL', 0)
     master_node=add_remote_point(x=L, y=w/2, z=h/2,
@@ -791,7 +801,7 @@ def plot_result(fig,ax,result,index,**kwargs):
     ax.plot(x_vals, vals, **kwargs)
 
 def plot_solid_result(fig,ax,r):
-    ax.plot(r.probes_x, r.probes_rotation
+    ax.plot(r.probes.x, r.probes.rotation
                     ,label=r.file
                     ,marker=MarkerStyle((3,0,0))
                     ,markevery=(0.02,0.2)
@@ -892,9 +902,7 @@ if moment:
         if not name.startswith('r_st'):
             continue
         r=globals()[name]
-        if not hasattr(r,'probes_x'):
-            continue
-        if not hasattr(r,'probes_rotation'):
+        if not hasattr(r,'probes'):
             continue
         plot_solid_result(fig_t,ax_t,r)
     add_analytical_rotation(ax_t,
