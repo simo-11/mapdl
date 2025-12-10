@@ -628,18 +628,25 @@ def add_remote_point(x=L, y=w/2, z=h/2,behaviour=Behaviour.DEFORMABLE):
     keyo,cid,4,1               ! 1=Deformable RBE3 style load, 2=rigid
     keyo,cid,2,2               ! MPC style contact
     """
-    mapdl.et(2,174)
-    mapdl.keyopt(2,12,5)
     match behaviour:
-        case Behaviour.DEFORMABLE: keyopt4=1
-        case Behaviour.RIGID: keyopt4=2
-    mapdl.keyopt(2,4,keyopt4)
-    mapdl.keyopt(2,2,2)
+        case Behaviour.DEFORMABLE: 
+            keyopt4=1
+            tn=2
+        case Behaviour.RIGID: 
+            keyopt4=2
+            tn=4
+    if not hasattr(add_remote_point, "rn"):
+        add_remote_point.rn = 1
+    add_remote_point.rn += 1        
+    mapdl.et(tn,174)
+    mapdl.keyopt(tn,12,5)
+    mapdl.keyopt(tn,4,keyopt4)
+    mapdl.keyopt(tn,2,2)
     mapdl.et(3, 170)
     mapdl.keyopt(3,2,1)
     mapdl.keyopt(3,4,0)
-    mapdl.type(2)
-    mapdl.real(2)
+    mapdl.type(tn)
+    mapdl.real(add_remote_point.rn)
     mapdl.mat(2)
     mapdl.esurf('ALL')
     """
@@ -652,9 +659,10 @@ def add_remote_point(x=L, y=w/2, z=h/2,behaviour=Behaviour.DEFORMABLE):
     """
     mapdl.type(3)
     mapdl.mat(2)
-    mapdl.real(2)
+    mapdl.real(add_remote_point.rn)
     mapdl.tshap(shape='pilo')
     mapdl.e(master_node)
+    mapdl.nsel('all')
     return master_node        
 #%% st1
 # uses cerig which is not compatible with large displacments
@@ -742,22 +750,34 @@ uc='st3'
 uc_nl=f"{uc}_nl"
 if Model.SOLID in models or True:
     do_nlgeom=False
+    add_probes=False
     t_start=time.time()
-    probes=solid_mesh(20_000)
+    probes=solid_mesh(1_000)
     mapdl.nsel('S', 'LOC', 'X', 0)
     mapdl.d('ALL', 'ALL', 0)
     master_node=add_remote_point(x=L, y=w/2, z=h/2,
                                  behaviour=Behaviour.RIGID)
     mapdl.f(master_node,'MX',moment)
     mapdl.allsel()
+    if add_probes:
+        probe_count=len(probes.x)
+        probes.node_numbers=np.empty(probe_count,dtype=np.uint32)
+        for idx,x in enumerate(probes.x.flat):
+            if x<L:
+                probes.node_numbers[idx]=add_remote_point(x=x)
+            else:
+                probes.node_numbers[idx]=master_node
     t_model=time.time()
+    print(f"Build of model with {probe_count} probes"
+          f" took {t_model-t_start:.2g} s"
+          )
     r_lin=pick_results(mapdl,file=uc)
     t_lin=time.time()
     globals()[f"r_{uc}"]=r_lin
     r_lin.rfe=r_lin.displacement[master_node-1][3]*180/np.pi 
     print(f"Rotation at free end using solid with nlgeom=off({uc})"
           f" {r_lin.rfe:.4g}°"
-          f" elapsed={t_lin-t_model:.2g} s"
+          f" solve took {t_lin-t_model:.2g} s"
           )
     if do_nlgeom:
         r_nl=pick_results(mapdl,True,uc_nl)
