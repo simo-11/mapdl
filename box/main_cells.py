@@ -750,9 +750,12 @@ uc='st3'
 uc_nl=f"{uc}_nl"
 if Model.SOLID in models or True:
     do_nlgeom=False
-    add_probes=False
+    add_probes=True
     t_start=time.time()
     probes=solid_mesh(1_000)
+    t_mesh=time.time()
+    print(f"Build of mesh took {t_mesh-t_start:.2g} s"
+          )
     mapdl.nsel('S', 'LOC', 'X', 0)
     mapdl.d('ALL', 'ALL', 0)
     master_node=add_remote_point(x=L, y=w/2, z=h/2,
@@ -767,9 +770,9 @@ if Model.SOLID in models or True:
                 probes.node_numbers[idx]=add_remote_point(x=x)
             else:
                 probes.node_numbers[idx]=master_node
-    t_model=time.time()
-    print(f"Build of model with {probe_count} probes"
-          f" took {t_model-t_start:.2g} s"
+    t_probes=time.time()
+    print(f"Build of {probe_count} probes"
+          f" took {t_probes-t_mesh:.2g} s"
           )
     r_lin=pick_results(mapdl,file=uc)
     t_lin=time.time()
@@ -777,7 +780,7 @@ if Model.SOLID in models or True:
     r_lin.rfe=r_lin.displacement[master_node-1][3]*180/np.pi 
     print(f"Rotation at free end using solid with nlgeom=off({uc})"
           f" {r_lin.rfe:.4g}°"
-          f" solve took {t_lin-t_model:.2g} s"
+          f" solve took {t_lin-t_probes:.2g} s"
           )
     if do_nlgeom:
         r_nl=pick_results(mapdl,True,uc_nl)
@@ -918,9 +921,8 @@ if moment:
                     ,marker=MarkerStyle((5,2,0))
                     ,markevery=(0.17,0.2)
                     )
-    for name in globals():
-        if not name.startswith('r_st'):
-            continue
+    names = [n for n in globals() if n.startswith("r_st")]    
+    for name in names:
         r=globals()[name]
         if not hasattr(r,'probes'):
             continue
