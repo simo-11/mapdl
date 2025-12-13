@@ -553,7 +553,6 @@ scale={scale:.3g}
 """, font_size=12)
     return (plotter,scale)
 #%% debug cell
-qtplot(r_bt, node_labels=True)
 #%% support functions for solids
 class Behaviour(enum.Enum):
     DEFORMABLE=1
@@ -776,6 +775,7 @@ if Model.SOLID in models or True:
           )
     r_lin=pick_results(mapdl,file=uc)
     t_lin=time.time()
+    r_lin.probes=probes
     globals()[f"r_{uc}"]=r_lin
     r_lin.rfe=r_lin.displacement[master_node-1][3]*180/np.pi 
     print(f"Rotation at free end using solid with nlgeom=off({uc})"
@@ -824,7 +824,16 @@ def plot_result(fig,ax,result,index,**kwargs):
     ax.plot(x_vals, vals, **kwargs)
 
 def plot_solid_result(fig,ax,r):
-    ax.plot(r.probes.x, r.probes.rotation
+    if not hasattr(r,'probes'):
+        raise ValueError("r must contain probes")
+    probes=r.probes
+    if not hasattr(probes, 'rotation'):
+        ra=np.empty(probes.node_numbers.shape)
+        ra[:] = 180/np.pi * r.displacement[probes.node_numbers, 3]
+#        for i,node_number in enumerate(probes.node_numbers):
+#            ra[i]=180/np.pi*r.displacement[node_number][3]
+        probes.rotation=ra
+    ax.plot(probes.x, probes.rotation
                     ,label=r.file
                     ,marker=MarkerStyle((3,0,0))
                     ,markevery=(0.02,0.2)
