@@ -207,7 +207,7 @@ if not 'mapdl' in globals():
     print(f"MAPDL lauched. Version: {version}")
 models=(Model.BEAM,)
 L=2
-ndiv=10
+ndiv=40
 master=0
 rotation_in_degress=True
 E=1E9
@@ -221,6 +221,7 @@ nu=0.3
 G=E/(2*(1+nu))
 sharp_corners=True
 do_plots=False
+do_nlgeom=False
 if not do_plots:
     plt.close('all')
 pvi=pv.version_info    
@@ -306,11 +307,12 @@ def solve_beam_torsion(uc):
     r_lin.rfe=r_lin.displacement[1][3]*180/np.pi
     globals()[f"r_{uc}"]=r_lin
     print(f"Rotation for {uc} with nlgeom=off ({uc}) {r_lin.rfe:.4g}°")
-    r_nl=pick_results(mapdl,True,file=f'{uc}_nl')
-    r_nl.rfe=r_nl.displacement[1][3]*180/np.pi
-    globals()[f"r_{uc}_nl"]=r_nl
-    print((f"Rotation for {uc} with nlgeom=on ({uc}_nl)"
-           f" {r_nl.rfe:.4g}°"))    
+    if do_nlgeom:
+        r_nl=pick_results(mapdl,True,file=f'{uc}_nl')
+        r_nl.rfe=r_nl.displacement[1][3]*180/np.pi
+        globals()[f"r_{uc}_nl"]=r_nl
+        print((f"Rotation for {uc} with nlgeom=on ({uc}_nl)"
+               f" {r_nl.rfe:.4g}°"))    
 #%% beam torsion bt
 uc='bt'
 if Model.BEAM in models:    
@@ -332,8 +334,12 @@ uc='bt2'
 if Model.BEAM in models:
     _moment=moment
     bm(keyopt1=1)
-    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
+    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)
+    saved_value=do_nlgeom
+    if not do_nlgeom:
+        do_nlgeom=True
     solve_beam_torsion(uc)
+    do_nlgeom=saved_value
 #%% bt3 
 # warping excluded
 uc='bt3'
@@ -687,7 +693,6 @@ if Model.SOLID in models or True:
 uc='st2'
 uc_nl=f"{uc}_nl"
 if Model.SOLID in models or True:
-    do_nlgeom=False
     t_start=time.time()
     solid_mesh(20_000)
     mapdl.nsel('S', 'LOC', 'X', 0)
@@ -803,6 +808,8 @@ def kc(It,Iw):
     return np.sqrt((G*It)/(E*Iw))
 
 def theta(T,It,Iw,L,x):
+    if Iw==0:
+        return T/(G*It)*x
     k=kc(It,Iw)
     c0=T/(k*G*It)
     if np.tanh(k*L)==1:
@@ -811,7 +818,7 @@ def theta(T,It,Iw,L,x):
         y=c0*((np.tanh(k*L)*(np.cosh(k*x)-1))-np.sinh(k*x)+k*x)
     return y
 
-def add_analytical_rotation(ax,It,Iw):
+def add_analytical_rotation(ax,It,Iw,label):
     if 'r_bt' in globals():
         r=globals()['r_bt']
         xv=np.sort(r.coords[:,0])
@@ -820,7 +827,7 @@ def add_analytical_rotation(ax,It,Iw):
     yv=theta(moment,It,Iw,L,xv)
     if rotation_in_degress:
         yv=180/np.pi*yv
-    ax.plot(xv,yv,label='analytical')
+    ax.plot(xv,yv,label=label)
 
 secdata=bm()
 if force:    
@@ -854,14 +861,15 @@ if moment:
     ms1=2
     ms2=0
     me1=0
-    me2=0.2    
+    me2=0.05
     for name in names:
         ms1=ms1+1
         ms2=(ms2+1)%3
-        me1=me1+0.07
+        me1=me1+0.1
+        me2=me2+.02
         r=globals()[name]
         plot_result(fig_t,ax_t,r,3
-                    ,label=f'beam({name})'
+                    ,label=f'beam({name[2:]})'
                     ,marker=MarkerStyle((ms1,ms2,0))
                     ,markevery=(me1,me2)
                     )        
@@ -871,6 +879,11 @@ if moment:
         plot_solid_result(fig_t,ax_t,r)
     add_analytical_rotation(ax_t,
                            get_sec_property(secdata,'Torsion Constant'),
-                           get_sec_property(secdata,'Warping Constant'))
+                           get_sec_property(secdata,'Warping Constant'),
+                           'warping torsion')
+    add_analytical_rotation(ax_t,
+                           get_sec_property(secdata,'Torsion Constant'),
+                           0,
+                           'pure torsion')
     ax_t.legend()
 #%%
