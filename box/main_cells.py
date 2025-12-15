@@ -298,34 +298,34 @@ if force and Model.BEAM in models:
     r_bvf=pick_results(mapdl,file='bvf')
     r_bvf_nl=pick_results(mapdl,True,file='bvf_nl')
     print("Vertical load for beam processed")
+#%% solve_beam_torsion
+def solve_beam_torsion(uc):
+    mapdl.fk(2,"MX",_moment)
+    print(f"Torsional moment of {_moment} for beam ({uc}) is processed")
+    r_lin=pick_results(mapdl,file=f'{uc}')
+    r_lin.rfe=r_lin.displacement[1][3]*180/np.pi
+    globals()[f"r_{uc}"]=r_lin
+    print(f"Rotation for {uc} with nlgeom=off ({uc}) {r_lin.rfe:.4g}°")
+    r_nl=pick_results(mapdl,True,file=f'{uc}_nl')
+    r_nl.rfe=r_nl.displacement[1][3]*180/np.pi
+    globals()[f"r_{uc}_nl"]=r_nl
+    print((f"Rotation for {uc} with nlgeom=on ({uc}_nl)"
+           f" {r_nl.rfe:.4g}°"))    
 #%% beam torsion bt
+uc='bt'
 if Model.BEAM in models:    
     _moment=moment
     bm(keyopt1=1)
-    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",value=0)    
-    mapdl.fk(2,"MX",_moment)
-    print(f"Torsional load of {_moment} for beam (bt) is processed")
-    r_bt=pick_results(mapdl,file='bt')
-    r_bt.rfe=r_bt.displacement[1][3]*180/np.pi
-    print(f"Rotation for bt with nlgeom=off (bt) {r_bt.rfe:.4g}°")
-    r_bt_nl=pick_results(mapdl,True,file='bt_nl')
-    r_bt_nl.rfe=r_bt_nl.displacement[1][3]*180/np.pi
-    print(f"Rotation for bt with nlgeom=on (bt_nl) {r_bt_nl.rfe:.4g}°")
+    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",value=0)
+    solve_beam_torsion(uc)
 #%% bt1 
 # warping constrained at loaded end
+uc='bt1'
 if Model.BEAM in models:
     _moment=moment
     bm(keyopt1=1)
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",value=0)
-    mapdl.fk(2,"MX",_moment)
-    print(f"Torsional load of {_moment} for beam (bt1) is processed")
-    r_bt1=pick_results(mapdl,file='bt1')
-    r_bt1.rfe=r_bt1.displacement[1][3]*180/np.pi
-    print(f"Rotation for bt1 with nlgeom=off (bt1) {r_bt1.rfe:.4g}°")
-    r_bt1_nl=pick_results(mapdl,True,file='bt1_nl')
-    r_bt1_nl.rfe=r_bt1_nl.displacement[1][3]*180/np.pi
-    print(("Rotation for bt1 with nlgeom=on (bt1_nl)"
-           f" {r_bt1_nl.rfe:.4g}°"))
+    solve_beam_torsion(uc)
 #%% bt2 
 # warping and axial displacement constrained at loaded end
 uc='bt2'
@@ -333,31 +333,16 @@ if Model.BEAM in models:
     _moment=moment
     bm(keyopt1=1)
     mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
-    mapdl.fk(2,"MX",_moment)
-    print(f"Torsional moment of {_moment} for beam ({uc}) is processed")
-    r_bt2=pick_results(mapdl,file=f'{uc}')
-    r_bt2.rfe=r_bt2.displacement[1][3]*180/np.pi
-    print(f"Rotation for {uc} with nlgeom=off ({uc}) {r_bt2.rfe:.4g}°")
-    r_bt2_nl=pick_results(mapdl,True,file=f'{uc}_nl')
-    r_bt2_nl.rfe=r_bt2_nl.displacement[1][3]*180/np.pi
-    print((f"Rotation for {uc} with nlgeom=on ({uc}_nl)"
-           f" {r_bt2_nl.rfe:.4g}°"))
+    solve_beam_torsion(uc)
 #%% bt3 
 # warping excluded
 uc='bt3'
 if Model.BEAM in models:
     _moment=moment
     bm(keyopt1=0)
-    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab3="WARP",lab4="UX",value=0)  
+    mapdl.dk(kpoi=2,lab="UY",lab2="UZ",lab4="UX",value=0)  
     mapdl.fk(2,"MX",_moment)
-    print(f"Torsional moment of {_moment} for beam ({uc}) is processed")
-    r_bt2=pick_results(mapdl,file=f'{uc}')
-    r_bt2.rfe=r_bt2.displacement[1][3]*180/np.pi
-    print(f"Rotation for {uc} with nlgeom=off ({uc}) {r_bt2.rfe:.4g}°")
-    r_bt2_nl=pick_results(mapdl,True,file=f'{uc}_nl')
-    r_bt2_nl.rfe=r_bt2_nl.displacement[1][3]*180/np.pi
-    print((f"Rotation for {uc} with nlgeom=on ({uc}_nl)"
-           f" {r_bt2_nl.rfe:.4g}°"))
+    solve_beam_torsion(uc)
 #%% btol
 # displacement constraint at loaded end and keyopts varied
 # if warping is included solution fails for rot_vals n*2*pi
@@ -465,7 +450,7 @@ for uc in range(1,3): # use upper limit of 4 or 5 to see failure
 """        
 #%% qtplot
 from pyvistaqt import BackgroundPlotter
-import numpy as np
+#import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as plt_colors
 import pathlib
@@ -828,7 +813,8 @@ def theta(T,It,Iw,L,x):
 
 def add_analytical_rotation(ax,It,Iw):
     if 'r_bt' in globals():
-        xv=np.sort(r_bt.coords[:,0])
+        r=globals()['r_bt']
+        xv=np.sort(r.coords[:,0])
     else:
         xv=np.linspace(0,L)
     yv=theta(moment,It,Iw,L,xv)
@@ -864,42 +850,21 @@ if moment:
         ax_t.set_ylabel(r'rotation [degrees]')
     else:
         ax_t.set_ylabel(r'rotation [radians]')
-    if 'r_bt' in vars():
-        plot_result(fig_t,ax_t,r_bt,3
-                    ,label='beam188(bt)'
-                    ,marker=MarkerStyle((3,0,0))
-                    ,markevery=(0.02,0.2)
-                    )
-    if 'r_bt_nl' in vars():
-        plot_result(fig_t,ax_t,r_bt_nl,3
-                    ,label='beam188-nlgeom(bt)'
-                    ,marker=MarkerStyle((5,0,0))
-                    ,markevery=(0.05,0.2)
-                    )
-    if 'r_bt1' in vars():
-        plot_result(fig_t,ax_t,r_bt1,3
-                    ,label='beam188(bt1)'
-                    ,marker=MarkerStyle((3,1,0))
-                    ,markevery=(0.08,0.2)
-                    )
-    if 'r_bt1_nl' in vars():
-        plot_result(fig_t,ax_t,r_bt1_nl,3
-                    ,label='beam188-nlgeom(bt1)'
-                    ,marker=MarkerStyle((5,1,0))
-                    ,markevery=(0.11,0.2)
-                    )
-    if 'r_bt2' in vars():
-        plot_result(fig_t,ax_t,r_bt2,3
-                    ,label='beam188(bt2)'
-                    ,marker=MarkerStyle((3,2,0))
-                    ,markevery=(0.14,0.2)
-                    )
-    if 'r_bt2_nl' in vars():
-        plot_result(fig_t,ax_t,r_bt2_nl,3
-                    ,label='beam188-nlgeom(bt2)'
-                    ,marker=MarkerStyle((5,2,0))
-                    ,markevery=(0.17,0.2)
-                    )
+    names = [n for n in globals() if n.startswith("r_bt")]
+    ms1=2
+    ms2=0
+    me1=0
+    me2=0.2    
+    for name in names:
+        ms1=ms1+1
+        ms2=(ms2+1)%3
+        me1=me1+0.07
+        r=globals()[name]
+        plot_result(fig_t,ax_t,r,3
+                    ,label=f'beam({name})'
+                    ,marker=MarkerStyle((ms1,ms2,0))
+                    ,markevery=(me1,me2)
+                    )        
     names = [n for n in globals() if n.startswith("r_st")]    
     for name in names:
         r=globals()[name]
