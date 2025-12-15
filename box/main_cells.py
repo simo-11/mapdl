@@ -602,16 +602,6 @@ def solid_mesh(target_nodes=20_000, tolerance = 0.10, max_iter = 20):
     else:
         raise Exception("Maximum iterations reached "
                         "without hitting target.")
-    mapdl.nsel('all')
-    mapdl.nsel('S','LOC','y',0)
-    mapdl.nsel('R','loc','z',0)
-    nlist=mapdl.nlist('all')
-    x=np.sort(nlist.to_array()[:,1])
-    probes=types.SimpleNamespace(
-        x=x
-        )
-    mapdl.nsel('all')
-    return probes
 # https://ansyshelp.ansys.com/public/account/secured?returnurl=///Views/Secured/corp/v252/en/ans_ctec/Hlp_ctec_surfcon.html        
 def add_remote_point(x=L, y=w/2, z=h/2,behaviour=Behaviour.DEFORMABLE):        
     master_node=mapdl.n(x=x, y=y, z=z)
@@ -749,9 +739,8 @@ uc='st3'
 uc_nl=f"{uc}_nl"
 if Model.SOLID in models or True:
     do_nlgeom=False
-    add_probes=True
     t_start=time.time()
-    probes=solid_mesh(1_000)
+    solid_mesh(1_000)
     t_mesh=time.time()
     print(f"Build of mesh took {t_mesh-t_start:.2g} s"
           )
@@ -761,26 +750,13 @@ if Model.SOLID in models or True:
                                  behaviour=Behaviour.RIGID)
     mapdl.f(master_node,'MX',moment)
     mapdl.allsel()
-    if add_probes:
-        probe_count=len(probes.x)
-        probes.node_numbers=np.empty(probe_count,dtype=np.uint32)
-        for idx,x in enumerate(probes.x.flat):
-            if x<L:
-                probes.node_numbers[idx]=add_remote_point(x=x)
-            else:
-                probes.node_numbers[idx]=master_node
-    t_probes=time.time()
-    print(f"Build of {probe_count} probes"
-          f" took {t_probes-t_mesh:.2g} s"
-          )
     r_lin=pick_results(mapdl,file=uc)
     t_lin=time.time()
-    r_lin.probes=probes
     globals()[f"r_{uc}"]=r_lin
     r_lin.rfe=r_lin.displacement[master_node-1][3]*180/np.pi 
     print(f"Rotation at free end using solid with nlgeom=off({uc})"
           f" {r_lin.rfe:.4g}°"
-          f" solve took {t_lin-t_probes:.2g} s"
+          f" solve took {t_lin-t_mesh:.2g} s"
           )
     if do_nlgeom:
         r_nl=pick_results(mapdl,True,uc_nl)
@@ -824,20 +800,14 @@ def plot_result(fig,ax,result,index,**kwargs):
     ax.plot(x_vals, vals, **kwargs)
 
 def plot_solid_result(fig,ax,r):
-    if not hasattr(r,'probes'):
-        raise ValueError("r must contain probes")
-    probes=r.probes
-    if not hasattr(probes, 'rotation'):
-        ra=np.empty(probes.node_numbers.shape)
-        ra[:] = 180/np.pi * r.displacement[probes.node_numbers, 3]
-#        for i,node_number in enumerate(probes.node_numbers):
-#            ra[i]=180/np.pi*r.displacement[node_number][3]
-        probes.rotation=ra
-    ax.plot(probes.x, probes.rotation
-                    ,label=r.file
-                    ,marker=MarkerStyle((3,0,0))
-                    ,markevery=(0.02,0.2)
-                    )
+    return
+    # ra=np.empty(probes.node_numbers.shape)
+    # ra[:] = 180/np.pi * r.displacement[probes.node_numbers-1, 3]
+    # ax.plot(x_vals, vals
+    #                 ,label=r.file
+    #                 ,marker=MarkerStyle((3,0,0))
+    #                 ,markevery=(0.02,0.2)
+    #                 )
     
 def add_analytical_bending(ax,I):
     xv=np.linspace(0,L)
@@ -933,8 +903,6 @@ if moment:
     names = [n for n in globals() if n.startswith("r_st")]    
     for name in names:
         r=globals()[name]
-        if not hasattr(r,'probes'):
-            continue
         plot_solid_result(fig_t,ax_t,r)
     add_analytical_rotation(ax_t,
                            get_sec_property(secdata,'Torsion Constant'),
