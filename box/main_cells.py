@@ -454,14 +454,14 @@ for uc in range(1,3): # use upper limit of 4 or 5 to see failure
     except Exception as e:
         print(f"Solve failed for {rv} due to {e}") 
 """        
-#%% qtplot
+#%% solid helpers
 from pyvistaqt import BackgroundPlotter
 #import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as plt_colors
 import pathlib
 
-def qtplot(src,scale=None,scalar_component='UX',node_labels=False):
+def get_data_for_solid(src,node_labels=False):
     # Load result file
     if isinstance(src,str):
         fn=f"local/{src}.rst"
@@ -490,6 +490,8 @@ def qtplot(src,scale=None,scalar_component='UX',node_labels=False):
     disp_array = np.zeros((n_points, 3))
     if node_labels:
         labels = np.empty(n_points,dtype='<U30')
+    else:
+        labels=None
     # Use disp.scoping.ids to get node IDs for each displacement vector
     for i, node_id in enumerate(disp.scoping.ids):
         if node_id in point_id_map:
@@ -501,6 +503,13 @@ def qtplot(src,scale=None,scalar_component='UX',node_labels=False):
                          f"{grid.points[idx][1]+disp_array[idx][1]:.4f}, "
                          f"{grid.points[idx][2]+disp_array[idx][2]:.4f})"
                          )
+    return (model,mesh,grid,disp_array,labels,file)
+
+def qtplot(src, scale=None, node_labels=False, **kwargs):
+    model, mesh, grid, disp_array, labels, file = get_data_for_solid(
+        src,
+        node_labels=node_labels,
+        **kwargs)
     # Apply scaled displacement to mesh
     if scale==None:
         # Compute bounding box dimensions
@@ -539,10 +548,36 @@ def qtplot(src,scale=None,scalar_component='UX',node_labels=False):
         plotter.add_point_labels(deformed_grid.points, 
                              labels, font_size=10, point_color='red')
     n_elements = mesh.elements.n_elements        
-    plotter.add_text(f"""{file}, {n_points} nodes, {n_elements} elements
+    plotter.add_text(f"""{file}, {grid.n_points} nodes, {n_elements} elements
 scale={scale:.3g}
 """, font_size=12)
     return (plotter,scale)
+def get_rotations_from_solid(src):
+    model, mesh, grid, disp_array, labels, file = get_data_for_solid(src)
+    pts = grid.points
+    mask = (np.isclose(pts[:, 1], 0.0)) & (np.isclose(pts[:, 2], 0.0))
+    selected_points = pts[mask]
+    order = np.argsort(selected_points[:, 0])
+    selected_points = selected_points[order]
+    x_vals=selected_points[:,0]
+    vals = np.empty_like(x_vals, dtype=float)
+    y_c, z_c = w/2, h/2
+    for i, x in enumerate(x_vals):
+        if np.isclose(x, L):
+            vals[i]=src.rfe   
+        else:
+            mask = np.isclose(grid.points[:, 0], x)
+            pts = grid.points[mask]
+            disp = disp_array[mask]    
+            # rotation from displacements
+            num = (
+                disp[:, 2] * (pts[:, 1] - y_c) -
+                disp[:, 1] * (pts[:, 2] - z_c)
+                )
+            den = (pts[:, 1] - y_c)**2 + (pts[:, 2] - z_c)**2
+            theta = num / den
+            vals[i] = 180/np.pi*np.mean(theta)
+    return (x_vals,vals)
 #%% debug cell
 #%% support functions for solids
 class Behaviour(enum.Enum):
@@ -790,14 +825,13 @@ def plot_result(fig,ax,result,index,**kwargs):
     ax.plot(x_vals, vals, **kwargs)
 
 def plot_solid_result(fig,ax,r):
-    return
-    # ra=np.empty(probes.node_numbers.shape)
-    # ra[:] = 180/np.pi * r.displacement[probes.node_numbers-1, 3]
-    # ax.plot(x_vals, vals
-    #                 ,label=r.file
-    #                 ,marker=MarkerStyle((3,0,0))
-    #                 ,markevery=(0.02,0.2)
-    #                 )
+    (x_vals,vals)=get_rotations_from_solid(r)
+    marker=r.file[2:]
+    ax.plot(x_vals, vals
+                    ,label=r.file
+                    ,marker=marker
+                    ,markevery=(0.02,0.2)
+                    )
     
 def add_analytical_bending(ax,I):
     xv=np.linspace(0,L)
