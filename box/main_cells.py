@@ -765,7 +765,7 @@ uc_nl=f"{uc}_nl"
 if Model.SOLID in models or True:
     do_nlgeom=False
     t_start=time.time()
-    solid_mesh(1_000)
+    solid_mesh(20_000)
     t_mesh=time.time()
     print(f"Build of mesh took {t_mesh-t_start:.2g} s"
           )
@@ -825,12 +825,17 @@ def plot_result(fig,ax,result,index,**kwargs):
     ax.plot(x_vals, vals, **kwargs)
 
 def plot_solid_result(fig,ax,r):
-    (x_vals,vals)=get_rotations_from_solid(r)
+    if hasattr(r, 'x_vals'):
+        x_vals=r.x_vals
+        vals=r.vals
+    else:
+        x_vals,vals=get_rotations_from_solid(r)
+        r.x_vals=x_vals
+        r.vals=vals
     marker=r.file[2:]
     ax.plot(x_vals, vals
                     ,label=r.file
                     ,marker=marker
-                    ,markevery=(0.02,0.2)
                     )
     
 def add_analytical_bending(ax,I):
