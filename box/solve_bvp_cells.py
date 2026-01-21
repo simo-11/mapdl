@@ -130,15 +130,15 @@ def beam_bending_with_elastic_supports(L, EI, supports,
         R = k * y
         reactions.append((xm, R))
 
-    total_load = 0.0
+    xs = np.linspace(0, L, 500)
+    total_load = np.trapezoid(q_total(xs), xs)
     if point_loads:
         total_load += sum(P for _, P in point_loads)
-    xs = np.linspace(0, L, 200)
-    total_load += np.trapezoid(q_func(xs), xs)
     total_reaction = sum(R for _, R in reactions)
     equilibrium_error = total_load + total_reaction
 
-    return beam_response, solutions, reactions, equilibrium_error
+    return (beam_response, solutions, reactions, xs, q_total,
+            total_load, equilibrium_error)
 # %% beam ending example usage
 L = 1.0
 EI = 1.0
@@ -146,7 +146,8 @@ supports = [(0.3, 200.0), (0.6, 150.0)]
 point_loads = [(0.5, -100.0)]
 q_func = lambda x: np.ones_like(x)
 
-beam_response, solutions, reactions, equilibrium_error = (
+(beam_response, solutions, reactions, xs, q_total, total_load,
+ equilibrium_error) = (
     beam_bending_with_elastic_supports(
     L, EI, supports,
     bc_left=[("y",0),("dy",0)],
@@ -164,10 +165,10 @@ for x in x_plot:
     M_plot.append(M)
     V_plot.append(V)
 
-plt.figure(figsize=(12,8))
+plt.figure(figsize=(12,10))
 
 # Deflection
-plt.subplot(3,1,1)
+plt.subplot(4,1,1)
 plt.plot(x_plot, y_plot, label="Deflection")
 for xm, _ in supports:
     plt.axvline(x=xm, color="blue", linestyle="--", 
@@ -203,6 +204,15 @@ for xp, P in point_loads:
     plt.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
 plt.ylabel("V(x)")
 plt.xlabel("x")
+
+# Continuous load visualization
+plt.subplot(4,1,4)
+plt.plot(xs, q_total(xs), color="green", label="Distributed load q(x)")
+for xp, P in point_loads:
+    plt.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
+plt.ylabel("q(x)")
+plt.xlabel("x")
+plt.legend()
 
 plt.tight_layout()
 plt.show()
