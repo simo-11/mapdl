@@ -13,8 +13,14 @@ import matplotlib.pyplot as plt
 E = 1e9
 nu = 0.3
 G = E/(2*(1+nu))
+g=9.8
+A=0.0044
+rho=1000
 It = 10.513e-6
 Iw = 1.64e-9
+Ixx=1.14e-5
+Iyy=4.18e-5
+Ixy=1.41e-5
 L = 0.15
 M = 1000.0
 plt_pause=0.5
@@ -76,8 +82,7 @@ def beam_bending_with_elastic_supports(L, EI, supports,
     
     def solve_segment(xa, xb, ya, yb, n_points=20):
         x = np.linspace(xa, xb, n_points)
-        y_init = np.zeros((4, x.size))
-    
+        y_init = np.zeros((4, x.size))  
         # Boundary condition function: ya_ and yb_ come from solve_bvp,
         # ya and yb are the target values you pass in
         def bc_segment(ya_, yb_, p=None):
@@ -91,14 +96,18 @@ def beam_bending_with_elastic_supports(L, EI, supports,
         return sol
     solutions = []
     ya = np.zeros(4)
-    x_positions = [0] + [s[0] for s in supports] + [L]
+    x_positions = []
+    if supports[0][0]>0:
+        x_positions=[0]
+    x_positions.extend([s[0] for s in supports])
+    if supports[-1][0]<L:
+        x_positions=x_positions+[L]
 
     for i in range(len(x_positions)-1):
         xa, xb = x_positions[i], x_positions[i+1]
         yb_guess = np.zeros(4)
         sol = solve_segment(xa, xb, ya, yb_guess)
         solutions.append(sol)
-
         if i < len(supports):
             xm, k = supports[i]
             ym = sol.sol(xb)
@@ -139,85 +148,94 @@ def beam_bending_with_elastic_supports(L, EI, supports,
 
     return (beam_response, solutions, reactions, xs, q_total,
             total_load, equilibrium_error)
-# %% beam ending example usage
-L = 1.0
-EI = 1.0
-supports = [(0.3, 200.0), (0.6, 150.0)]
-point_loads = [(0.5, -100.0)]
-q_func = lambda x: np.ones_like(x)
 
-(beam_response, solutions, reactions, xs, q_total, total_load,
- equilibrium_error) = (
-    beam_bending_with_elastic_supports(
-    L, EI, supports,
-    bc_left=[("y",0),("dy",0)],
-    bc_right=[("d2y",0),("d3y",0)],
-    point_loads=point_loads,
-    q_func=q_func
-))
+def run_example(supports,point_loads,distributed_load):
+    (beam_response, solutions, reactions, xs, q_total, total_load,
+     equilibrium_error) = (
+        beam_bending_with_elastic_supports(
+        L, E*Ixx, supports,
+        point_loads=point_loads,
+        q_func=distributed_load
+    ))
+    
+    # Plot diagrams with markers and reaction annotations
+    x_plot = np.linspace(0, L, 200)
+    y_plot, M_plot, V_plot = [], [], []
+    for x in x_plot:
+        y, dy, M, V = beam_response(x)
+        y_plot.append(y)
+        M_plot.append(M)
+        V_plot.append(V)
+    
+    # Deflection
+    fig1,ax1=plt.subplots(num='Deflection',clear=True)
+    ax1.plot(x_plot, y_plot, label="Deflection")
+    if supports:
+        for xm, _ in supports:
+            ax1.axvline(x=xm, color="blue", linestyle="--", 
+                        alpha=0.5, label="Support" 
+                        if xm==supports[0][0] else "")
+    if point_loads:
+        for xp, P in point_loads:
+            ax1.axvline(x=xp, color="red", linestyle=":", 
+                        alpha=0.7, label="Point load" 
+                        if xp==point_loads[0][0] else "")
+    ax1.set_ylabel("y(x)")
+    ax1.legend()
+    plt.pause(plt_pause)
+    
+    # Annotate reactions
+    for xm, R in reactions:
+        plt.annotate(f"R={R:.1f}", xy=(xm,0), xytext=(xm,0.05),
+                     arrowprops=dict(facecolor='black', shrink=0.05),
+                     ha='center')
+    
+    # Moment
+    fig2,ax2=plt.subplots(num='Moment',clear=True)
+    ax2.plot(x_plot, M_plot, label="Moment")
+    if supports:
+        for xm, _ in supports:
+            ax2.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
+    if point_loads:
+        for xp, P in point_loads:
+            ax2.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
+    ax2.set_ylabel("M(x)")
+    ax2.set_xlabel("x")
+    plt.pause(plt_pause)
+    
+    # Shear
+    fig3,ax3=plt.subplots(num='Shear',clear=True)
+    ax3.plot(x_plot, V_plot, label="Shear")
+    for xm, _ in supports:
+        ax3.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
+    for xp, P in point_loads:
+        ax3.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
+    ax3.set_ylabel("V(x)")
+    ax3.set_xlabel("x")
+    plt.pause(plt_pause)
+    
+    # Continuous load visualization
+    fig4,ax4=plt.subplots(num='Distributed load',clear=True)
+    ax4.plot(xs, q_total(xs), color="green", label="Distributed load q(x)")
+    for xp, P in point_loads:
+        ax4.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
+    ax4.set_ylabel("q(x)")
+    ax4.set_xlabel("x")
+    ax4.legend()
+    plt.pause(plt_pause)
+    
+    print("Support reactions:")
+    for xm, R in reactions:
+        print(f"Support at x={xm:.2f}, reaction={R:.2f}")
+    print(f"Equilibrium error (should be ~0): {equilibrium_error:.4e}")   
+# %% Clamped beam with own weight
+supports = [(0., 200.0), (1e-3*L, 200.0)]
+point_loads=None
+distributed_load = lambda x: -A*rho*g*np.ones_like(x)
+run_example(supports,point_loads,distributed_load)
+# %% Clamped beam with load at free end
+supports = [(0., 200.0), (1e-3*L, 200.0)]
+point_loads = [(1*L, -0.5*L*A*rho*g)]
+distributed_load = None
+run_example(supports,point_loads,distributed_load)
 
-# Plot diagrams with markers and reaction annotations
-x_plot = np.linspace(0, L, 200)
-y_plot, M_plot, V_plot = [], [], []
-for x in x_plot:
-    y, dy, M, V = beam_response(x)
-    y_plot.append(y)
-    M_plot.append(M)
-    V_plot.append(V)
-
-plt.figure(figsize=(12,10))
-
-# Deflection
-plt.subplot(4,1,1)
-plt.plot(x_plot, y_plot, label="Deflection")
-for xm, _ in supports:
-    plt.axvline(x=xm, color="blue", linestyle="--", 
-                alpha=0.5, label="Support" if xm==supports[0][0] else "")
-for xp, P in point_loads:
-    plt.axvline(x=xp, color="red", linestyle=":", 
-                alpha=0.7, label="Point load" if xp==point_loads[0][0] else "")
-plt.ylabel("y(x)")
-plt.title("Beam response diagrams")
-plt.legend()
-
-# Annotate reactions
-for xm, R in reactions:
-    plt.annotate(f"R={R:.1f}", xy=(xm,0), xytext=(xm,0.05),
-                 arrowprops=dict(facecolor='black', shrink=0.05),
-                 ha='center')
-
-# Moment
-plt.subplot(3,1,2)
-plt.plot(x_plot, M_plot, label="Moment")
-for xm, _ in supports:
-    plt.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
-for xp, P in point_loads:
-    plt.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
-plt.ylabel("M(x)")
-
-# Shear
-plt.subplot(3,1,3)
-plt.plot(x_plot, V_plot, label="Shear")
-for xm, _ in supports:
-    plt.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
-for xp, P in point_loads:
-    plt.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
-plt.ylabel("V(x)")
-plt.xlabel("x")
-
-# Continuous load visualization
-plt.subplot(4,1,4)
-plt.plot(xs, q_total(xs), color="green", label="Distributed load q(x)")
-for xp, P in point_loads:
-    plt.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
-plt.ylabel("q(x)")
-plt.xlabel("x")
-plt.legend()
-
-plt.tight_layout()
-plt.show()
-
-print("Support reactions:")
-for xm, R in reactions:
-    print(f"Support at x={xm:.2f}, reaction={R:.2f}")
-print(f"Equilibrium error (should be ~0): {equilibrium_error:.4e}")
