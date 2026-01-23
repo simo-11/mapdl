@@ -21,7 +21,7 @@ Iw = 1.64e-9
 Ixx=1.14e-5
 Iyy=4.18e-5
 Ixy=1.41e-5
-L = 0.15
+L = 2
 M = 1000.0
 plt_pause=0.5
 # %% Differential equation for rotation
@@ -64,7 +64,8 @@ ax.legend()
 plt.pause(plt_pause)
 # %% beam bending
 def beam_bending_with_elastic_supports(L, EI, supports,
-                               bc_left=None, bc_right=None,
+                               bc_left=[("d2y",0),("d3y",0)], 
+                               bc_right=[("d2y",0),("d3y",0)],
                                point_loads=None, q_func=None,
                                n_points=20):
     if q_func is None:
@@ -75,6 +76,9 @@ def beam_bending_with_elastic_supports(L, EI, supports,
         if point_loads:
             for xp, P in point_loads:
                 q += P * np.exp(-((x-xp)**2)/(2*1e-4)) / np.sqrt(2*np.pi*1e-4)
+        if supports:
+            for xs, k in supports:
+                q += k * np.exp(-((x-xs)**2)/(2*1e-4)) / np.sqrt(2*np.pi*1e-4)                
         return q
 
     def bending_fun(x, y):
@@ -97,10 +101,11 @@ def beam_bending_with_elastic_supports(L, EI, supports,
     solutions = []
     ya = np.zeros(4)
     x_positions = []
-    if supports[0][0]>0:
+    if not supports or supports[0][0]>0:
         x_positions=[0]
-    x_positions.extend([s[0] for s in supports])
-    if supports[-1][0]<L:
+    if supports:
+        x_positions.extend([s[0] for s in supports])
+    if not supports or supports[-1][0]<L:
         x_positions=x_positions+[L]
 
     for i in range(len(x_positions)-1):
@@ -108,7 +113,7 @@ def beam_bending_with_elastic_supports(L, EI, supports,
         yb_guess = np.zeros(4)
         sol = solve_segment(xa, xb, ya, yb_guess)
         solutions.append(sol)
-        if i < len(supports):
+        if supports and i < len(supports):
             xm, k = supports[i]
             ym = sol.sol(xb)
             ym[2] = k/EI * ym[0]
@@ -134,10 +139,11 @@ def beam_bending_with_elastic_supports(L, EI, supports,
         return None
 
     reactions = []
-    for xm, k in supports:
-        y, _, _, _ = beam_response(xm)
-        R = k * y
-        reactions.append((xm, R))
+    if supports:
+        for xm, k in supports:
+            y, _, _, _ = beam_response(xm)
+            R = k * y
+            reactions.append((xm, R))
 
     xs = np.linspace(0, L, 500)
     total_load = np.trapezoid(q_total(xs), xs)
@@ -206,19 +212,21 @@ def run_example(supports,point_loads,distributed_load):
     # Shear
     fig3,ax3=plt.subplots(num='Shear',clear=True)
     ax3.plot(x_plot, V_plot, label="Shear")
-    for xm, _ in supports:
-        ax3.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
-    for xp, P in point_loads:
-        ax3.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
+    if supports:
+        for xm, _ in supports:
+            ax3.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
+    if point_loads:
+        for xp, P in point_loads:
+            ax3.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
     ax3.set_ylabel("V(x)")
     ax3.set_xlabel("x")
     plt.pause(plt_pause)
     
-    # Continuous load visualization
-    fig4,ax4=plt.subplots(num='Distributed load',clear=True)
-    ax4.plot(xs, q_total(xs), color="green", label="Distributed load q(x)")
-    for xp, P in point_loads:
-        ax4.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
+    fig4,ax4=plt.subplots(num='Load',clear=True)
+    ax4.plot(xs, q_total(xs), color="green", label="Load q(x)")
+    if point_loads:
+        for xp, P in point_loads:
+            ax4.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
     ax4.set_ylabel("q(x)")
     ax4.set_xlabel("x")
     ax4.legend()
@@ -237,5 +245,15 @@ run_example(supports,point_loads,distributed_load)
 supports = [(0., 200.0), (1e-3*L, 200.0)]
 point_loads = [(1*L, -0.5*L*A*rho*g)]
 distributed_load = None
+run_example(supports,point_loads,distributed_load)
+# %% No loads and no supports
+supports = None
+point_loads = None
+distributed_load = None
+run_example(supports,point_loads,distributed_load)
+# %% Just on weight
+supports = None
+point_loads = None
+distributed_load = lambda x: -A*rho*g*np.ones_like(x)
 run_example(supports,point_loads,distributed_load)
 
