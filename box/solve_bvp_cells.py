@@ -63,11 +63,9 @@ ax.plot(sol.x, T, label="Moment from Iw")
 ax.legend()
 plt.pause(plt_pause)
 # %% beam bending
-def beam_bending_with_elastic_supports(L, EI, supports,
-                               bc_left=[("d2y",0),("d3y",0)], 
-                               bc_right=[("d2y",0),("d3y",0)],
+def beam_bending_with_elastic_supports(L, EI, bc,
                                point_loads=None, q_func=None,
-                               n_points=20):
+                               n_points=50):
     if q_func is None:
         q_func = lambda x: np.zeros_like(x)
 
@@ -76,106 +74,44 @@ def beam_bending_with_elastic_supports(L, EI, supports,
         if point_loads:
             for xp, P in point_loads:
                 q += P * np.exp(-((x-xp)**2)/(2*1e-4)) / np.sqrt(2*np.pi*1e-4)
-        if supports:
-            for xs, k in supports:
-                q += k * np.exp(-((x-xs)**2)/(2*1e-4)) / np.sqrt(2*np.pi*1e-4)                
         return q
 
     def bending_fun(x, y):
         return np.vstack((y[1], y[2], y[3], q_total(x)/EI))
     
-    def solve_segment(xa, xb, ya, yb, n_points=20):
-        x = np.linspace(xa, xb, n_points)
-        y_init = np.zeros((4, x.size))  
-        # Boundary condition function: ya_ and yb_ come from solve_bvp,
-        # ya and yb are the target values you pass in
-        def bc_segment(ya_, yb_, p=None):
-            return np.array([
-                ya_[0] - ya[0],   # deflection at left end
-                ya_[1] - ya[1],   # slope at left end
-                yb_[0] - yb[0],   # deflection at right end
-                yb_[1] - yb[1]    # slope at right end
-            ]) 
-        sol = solve_bvp(bending_fun, bc_segment, x, y_init)
-        return sol
-    solutions = []
-    ya = np.zeros(4)
-    x_positions = []
-    if not supports or supports[0][0]>0:
-        x_positions=[0]
-    if supports:
-        x_positions.extend([s[0] for s in supports])
-    if not supports or supports[-1][0]<L:
-        x_positions=x_positions+[L]
-
-    for i in range(len(x_positions)-1):
-        xa, xb = x_positions[i], x_positions[i+1]
-        yb_guess = np.zeros(4)
-        sol = solve_segment(xa, xb, ya, yb_guess)
-        solutions.append(sol)
-        if supports and i < len(supports):
-            xm, k = supports[i]
-            ym = sol.sol(xb)
-            ym[2] = k/EI * ym[0]
-            ya = ym
-
-    sol_last = solutions[-1]
-    ym = sol_last.sol(L)
-    if bc_right:
-        for cond, val in bc_right:
-            if cond == "y": ym[0] = val
-            elif cond == "dy": ym[1] = val
-            elif cond == "d2y": ym[2] = val
-            elif cond == "d3y": ym[3] = val
-
-    def beam_response(x):
-        for sol in solutions:
-            if sol.x[0] <= x <= sol.x[-1]:
-                vals = sol.sol(x)
-                y, dy, d2y, d3y = vals
-                M = EI * d2y
-                V = EI * d3y
-                return y, dy, M, V
-        return None
-
+    xs = np.linspace(0, L, n_points)
+    ya = np.zeros((4,xs.size))
+    sol=solve_bvp(bending_fun, bc, xs, ya)
     reactions = []
-    if supports:
-        for xm, k in supports:
-            y, _, _, _ = beam_response(xm)
-            R = k * y
-            reactions.append((xm, R))
-
-    xs = np.linspace(0, L, 500)
     total_load = np.trapezoid(q_total(xs), xs)
     if point_loads:
         total_load += sum(P for _, P in point_loads)
     total_reaction = sum(R for _, R in reactions)
     equilibrium_error = total_load + total_reaction
 
-    return (beam_response, solutions, reactions, xs, q_total,
+    return (sol,reactions, xs, q_total,
             total_load, equilibrium_error)
 
-def run_example(supports,point_loads,distributed_load):
-    (beam_response, solutions, reactions, xs, q_total, total_load,
+def run_example(bc,point_loads,distributed_load):
+    (res, reactions, xs, q_total, total_load,
      equilibrium_error) = (
         beam_bending_with_elastic_supports(
-        L, E*Ixx, supports,
+        L, E*Ixx, bc,
         point_loads=point_loads,
         q_func=distributed_load
     ))
-    
-    # Plot diagrams with markers and reaction annotations
-    x_plot = np.linspace(0, L, 200)
+    if not res.success:
+        raise Exception(f"solution failed, {res.message}")
     y_plot, M_plot, V_plot = [], [], []
-    for x in x_plot:
-        y, dy, M, V = beam_response(x)
+    for x in xs:
+        y, dy, M, V = res.sol(x)
         y_plot.append(y)
         M_plot.append(M)
         V_plot.append(V)
     
     # Deflection
     fig1,ax1=plt.subplots(num='Deflection',clear=True)
-    ax1.plot(x_plot, y_plot, label="Deflection")
+    ax1.plot(xs, y_plot, label="Deflection")
     if supports:
         for xm, _ in supports:
             ax1.axvline(x=xm, color="blue", linestyle="--", 
@@ -198,7 +134,7 @@ def run_example(supports,point_loads,distributed_load):
     
     # Moment
     fig2,ax2=plt.subplots(num='Moment',clear=True)
-    ax2.plot(x_plot, M_plot, label="Moment")
+    ax2.plot(xs, M_plot, label="Moment")
     if supports:
         for xm, _ in supports:
             ax2.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
@@ -211,7 +147,7 @@ def run_example(supports,point_loads,distributed_load):
     
     # Shear
     fig3,ax3=plt.subplots(num='Shear',clear=True)
-    ax3.plot(x_plot, V_plot, label="Shear")
+    ax3.plot(xs, V_plot, label="Shear")
     if supports:
         for xm, _ in supports:
             ax3.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
@@ -231,29 +167,51 @@ def run_example(supports,point_loads,distributed_load):
     ax4.set_xlabel("x")
     ax4.legend()
     plt.pause(plt_pause)
-    
-    print("Support reactions:")
-    for xm, R in reactions:
-        print(f"Support at x={xm:.2f}, reaction={R:.2f}")
-    print(f"Equilibrium error (should be ~0): {equilibrium_error:.4e}")   
+    return res
 # %% Clamped beam with own weight
-supports = [(0., 200.0), (1e-3*L, 200.0)]
+def bc(ya,yb):
+    return np.array([
+        ya[0],# displacement(0)=0
+        ya[1],# rotation'(0)=0
+        yb[2],# moment''(L)=0
+        yb[3] # shear'''(L)=0
+    ])
 point_loads=None
 distributed_load = lambda x: -A*rho*g*np.ones_like(x)
-run_example(supports,point_loads,distributed_load)
+res1=run_example(bc,point_loads,distributed_load)
 # %% Clamped beam with load at free end
-supports = [(0., 200.0), (1e-3*L, 200.0)]
+def bc(ya,yb):
+    return np.array([
+        ya[0],# displacement(0)=0
+        ya[1],# rotation'(0)=0
+        yb[2],# moment''(L)=0
+        yb[3] # shear'''(L)=0
+    ])
 point_loads = [(1*L, -0.5*L*A*rho*g)]
 distributed_load = None
-run_example(supports,point_loads,distributed_load)
+res2=run_example(bc,point_loads,distributed_load)
 # %% No loads and no supports
+def bc(ya,yb):
+    return np.array([
+        ya[0],# displacement(0)=0
+        ya[1],# rotation'(0)=0
+        yb[0],# displacement(L)=0
+        yb[1] # rotation'(L)=0
+    ])
 supports = None
 point_loads = None
 distributed_load = None
-run_example(supports,point_loads,distributed_load)
-# %% Just on weight
+res3=run_example(bc,point_loads,distributed_load)
+# %% Own weight with simple supports
+def bc(ya,yb):
+    return np.array([
+        ya[0],# displacement(0)=0
+        ya[2],# moment''(0)=0
+        yb[0],# displacement''(L)=0
+        yb[2] # moment''(L)=0
+    ])
 supports = None
 point_loads = None
 distributed_load = lambda x: -A*rho*g*np.ones_like(x)
-run_example(supports,point_loads,distributed_load)
+run_example(bc,point_loads,distributed_load)
 
