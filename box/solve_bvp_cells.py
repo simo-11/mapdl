@@ -86,15 +86,11 @@ def beam_bending_with_elastic_supports(L, EI, bc,
     total_load = np.trapezoid(q_total(xs), xs)
     if point_loads:
         total_load += sum(P for _, P in point_loads)
-    total_reaction = sum(R for _, R in reactions)
-    equilibrium_error = total_load + total_reaction
 
-    return (sol,reactions, xs, q_total,
-            total_load, equilibrium_error)
+    return (sol,reactions, xs, q_total,total_load)
 
 def run_example(bc,point_loads,distributed_load):
-    (res, reactions, xs, q_total, total_load,
-     equilibrium_error) = (
+    (res, reactions, xs, q_total, total_load) = (
         beam_bending_with_elastic_supports(
         L, E*Ixx, bc,
         point_loads=point_loads,
@@ -102,70 +98,74 @@ def run_example(bc,point_loads,distributed_load):
     ))
     if not res.success:
         raise Exception(f"solution failed, {res.message}")
-    y_plot, M_plot, V_plot = [], [], []
+    w_plot, theta_plot,M_plot, V_plot = [], [], [], []
     for x in xs:
         y, dy, M, V = res.sol(x)
-        y_plot.append(y)
+        w_plot.append(y)
+        theta_plot.append(dy)
         M_plot.append(M)
         V_plot.append(V)
     
     # Deflection
-    fig1,ax1=plt.subplots(num='Deflection',clear=True)
-    ax1.plot(xs, y_plot, label="Deflection")
+    fig,axes=plt.subplot_mosaic(
+    [
+        ["q", None],
+        ["w","theta"],
+        ["V", "M"],
+    ]
+    ,num='solve bvp results',clear=True)
+    ax=axes["q"]
+    ax.plot(xs, q_total(xs), color="green", label="Load")
+    if point_loads:
+        for xp, P in point_loads:
+            ax.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
+    ax.set_ylabel("q [N/m]")
+    ax=axes["w"]
+    ax.plot(xs, w_plot, label="Deflection")
+    ax.set_ylabel("w [m]")
     if supports:
         for xm, _ in supports:
-            ax1.axvline(x=xm, color="blue", linestyle="--", 
+            ax.axvline(x=xm, color="blue", linestyle="--", 
                         alpha=0.5, label="Support" 
                         if xm==supports[0][0] else "")
     if point_loads:
         for xp, P in point_loads:
-            ax1.axvline(x=xp, color="red", linestyle=":", 
+            ax.axvline(x=xp, color="red", linestyle=":", 
                         alpha=0.7, label="Point load" 
                         if xp==point_loads[0][0] else "")
-    ax1.set_ylabel("y(x)")
-    ax1.legend()
-    plt.pause(plt_pause)
-    
     # Annotate reactions
     for xm, R in reactions:
         plt.annotate(f"R={R:.1f}", xy=(xm,0), xytext=(xm,0.05),
                      arrowprops=dict(facecolor='black', shrink=0.05),
                      ha='center')
-    
-    # Moment
-    fig2,ax2=plt.subplots(num='Moment',clear=True)
-    ax2.plot(xs, M_plot, label="Moment")
+    ax=axes["theta"]
+    ax.plot(xs, theta_plot, label="Rotation")
+    ax.set_ylabel("θ [rad]")
+    ax=axes["M"]
+    ax.plot(xs, M_plot, label="Moment")
     if supports:
         for xm, _ in supports:
-            ax2.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
+            ax.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
     if point_loads:
         for xp, P in point_loads:
-            ax2.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
-    ax2.set_ylabel("M(x)")
-    ax2.set_xlabel("x")
-    plt.pause(plt_pause)
-    
-    # Shear
-    fig3,ax3=plt.subplots(num='Shear',clear=True)
-    ax3.plot(xs, V_plot, label="Shear")
+            ax.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
+    ax.set_ylabel("M [Nm]")
+    ax=axes["V"]
+    ax.plot(xs, V_plot, label="Shear")
     if supports:
         for xm, _ in supports:
-            ax3.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
+            ax.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
     if point_loads:
         for xp, P in point_loads:
-            ax3.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
-    ax3.set_ylabel("V(x)")
-    ax3.set_xlabel("x")
-    plt.pause(plt_pause)
-    
-    fig4,ax4=plt.subplots(num='Load',clear=True)
-    ax4.plot(xs, q_total(xs), color="green", label="Load q(x)")
-    if point_loads:
-        for xp, P in point_loads:
-            ax4.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
-    ax4.set_ylabel("q(x)")
-    ax4.set_xlabel("x")
-    ax4.legend()
+            ax.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
+    ax.set_ylabel("V [N]")
+    for ax in fig.axes:
+        if ax.get_label()=='None':
+            ax.remove()
+        else:    
+            ax.legend()
+            ax.set_xlabel("x [m]")
+    fig.tight_layout()
     plt.pause(plt_pause)
     return res
 # %% Clamped beam with own weight
