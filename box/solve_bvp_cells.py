@@ -111,7 +111,7 @@ def run_example(bc,point_loads,distributed_load):
     [
         ["q", None],
         ["w","theta"],
-        ["V", "M"],
+        ["M", "V"],
     ]
     ,num='solve bvp results',clear=True)
     ax=axes["q"]
