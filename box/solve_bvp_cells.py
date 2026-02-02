@@ -63,7 +63,8 @@ ax.plot(sol.x, T, label="Moment from Iw")
 ax.legend()
 plt.pause(plt_pause)
 # %% beam bending
-def beam_bending_with_elastic_supports(L, EI, bc,
+def beam_bending_with_elastic_supports(L, bc, fun=None,
+                               ec=None,gd=None,b=None,        
                                point_loads=None, q_func=None,
                                n_points=50):
     if q_func is None:
@@ -76,12 +77,23 @@ def beam_bending_with_elastic_supports(L, EI, bc,
                 q += P * np.exp(-((x-xp)**2)/(2*1e-4)) / np.sqrt(2*np.pi*1e-4)
         return q
 
-    def bending_fun(x, y):
-        return np.vstack((y[1], y[2], y[3], q_total(x)/EI))
+    if fun is None:
+        def bending_fun(x, y):
+            return np.vstack((y[1], y[2], y[3], q_total(x)/ec))
+        fun=bending_fun
+    else:
+        def gbt_fun(x, y):
+            y1, y2, y3, y4 = y
+            dy1 = y2
+            dy2 = y3
+            dy3 = y4
+            dy4 = (q_total(x) - gd * y3 - b * y1) / ec
+            return np.vstack((dy1, dy2, dy3, dy4))
+        fun=gbt_fun
     
     xs = np.linspace(0, L, n_points)
     ya = np.zeros((4,xs.size))
-    sol=solve_bvp(bending_fun, bc, xs, ya)
+    sol=solve_bvp(fun, bc, xs, ya)
     reactions = []
     total_load = np.trapezoid(q_total(xs), xs)
     if point_loads:
@@ -92,7 +104,7 @@ def beam_bending_with_elastic_supports(L, EI, bc,
 def run_example(bc,point_loads,distributed_load):
     (res, reactions, xs, q_total, total_load) = (
         beam_bending_with_elastic_supports(
-        L, E*Ixx, bc,
+        L, bc, ec=E*Ixx,
         point_loads=point_loads,
         q_func=distributed_load
     ))
