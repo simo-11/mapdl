@@ -77,11 +77,11 @@ def beam_bending_with_elastic_supports(L, bc, fun=None,
                 q += P * np.exp(-((x-xp)**2)/(2*1e-4)) / np.sqrt(2*np.pi*1e-4)
         return q
 
-    if fun is None:
+    if fun is None and gd is None and b is None:
         def bending_fun(x, y):
             return np.vstack((y[1], y[2], y[3], q_total(x)/ec))
         fun=bending_fun
-    else:
+    elif fun is None:
         def gbt_fun(x, y):
             y1, y2, y3, y4 = y
             dy1 = y2
