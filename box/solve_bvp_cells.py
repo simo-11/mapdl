@@ -24,6 +24,7 @@ Ixy=1.41e-5
 L = 2
 M = 1000.0
 plt_pause=0.5
+res={}
 # %% Differential equation for rotation
 # GI_t*theta'' - EIw*theta'''' = m
 def torsion_fun(x, y):
@@ -63,9 +64,10 @@ ax.plot(sol.x, T, label="Moment from Iw")
 ax.legend()
 plt.pause(plt_pause)
 # %% beam bending
-def beam_bending_with_elastic_supports(L, bc, fun=None,
+def beam_bending_with_elastic_supports(bc,L=L, fun=None,
                                ec=None,gd=None,b=None,        
-                               point_loads=None, q_func=None,
+                               point_loads=None, 
+                               q_func=None,
                                n_points=50):
     if q_func is None:
         q_func = lambda x: np.zeros_like(x)
@@ -101,10 +103,10 @@ def beam_bending_with_elastic_supports(L, bc, fun=None,
 
     return (sol,reactions, xs, q_total,total_load)
 
-def run_example(bc,point_loads,distributed_load):
+def run_example(bc,point_loads,distributed_load,uc,L=L):
     (res, reactions, xs, q_total, total_load) = (
         beam_bending_with_elastic_supports(
-        L, bc, ec=E*Ixx,
+        bc, L=L, ec=E*Ixx,
         point_loads=point_loads,
         q_func=distributed_load
     ))
@@ -125,7 +127,7 @@ def run_example(bc,point_loads,distributed_load):
         ["w","theta"],
         ["M", "V"],
     ]
-    ,num='solve bvp results',clear=True)
+    ,num=f'solve bvp results for {uc}',clear=True)
     ax=axes["q"]
     ax.plot(xs, q_total(xs), color="green", label="Load")
     if point_loads:
@@ -135,11 +137,6 @@ def run_example(bc,point_loads,distributed_load):
     ax=axes["w"]
     ax.plot(xs, w_plot, label="Deflection")
     ax.set_ylabel("w [m]")
-    if supports:
-        for xm, _ in supports:
-            ax.axvline(x=xm, color="blue", linestyle="--", 
-                        alpha=0.5, label="Support" 
-                        if xm==supports[0][0] else "")
     if point_loads:
         for xp, P in point_loads:
             ax.axvline(x=xp, color="red", linestyle=":", 
@@ -155,18 +152,12 @@ def run_example(bc,point_loads,distributed_load):
     ax.set_ylabel("θ [rad]")
     ax=axes["M"]
     ax.plot(xs, M_plot, label="Moment")
-    if supports:
-        for xm, _ in supports:
-            ax.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
     if point_loads:
         for xp, P in point_loads:
             ax.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
     ax.set_ylabel("M [Nm]")
     ax=axes["V"]
     ax.plot(xs, V_plot, label="Shear")
-    if supports:
-        for xm, _ in supports:
-            ax.axvline(x=xm, color="blue", linestyle="--", alpha=0.5)
     if point_loads:
         for xp, P in point_loads:
             ax.axvline(x=xp, color="red", linestyle=":", alpha=0.7)
@@ -190,7 +181,8 @@ def bc(ya,yb):
     ])
 point_loads=None
 distributed_load = lambda x: -A*rho*g*np.ones_like(x)
-res1=run_example(bc,point_loads,distributed_load)
+uc='cf_dl'
+res[uc]=run_example(bc,point_loads,distributed_load,uc)
 # %% Clamped beam with load at free end
 def bc(ya,yb):
     return np.array([
@@ -199,21 +191,13 @@ def bc(ya,yb):
         yb[2],# moment''(L)=0
         yb[3] # shear'''(L)=0
     ])
-point_loads = [(1*L, -0.5*L*A*rho*g)]
+point_loads = [(1*L, -L*A*rho*g)]
 distributed_load = None
-res2=run_example(bc,point_loads,distributed_load)
-# %% No loads and no supports
-def bc(ya,yb):
-    return np.array([
-        ya[0],# displacement(0)=0
-        ya[1],# rotation'(0)=0
-        yb[0],# displacement(L)=0
-        yb[1] # rotation'(L)=0
-    ])
-supports = None
-point_loads = None
-distributed_load = None
-res3=run_example(bc,point_loads,distributed_load)
+uc='cf_pl'
+res[uc]=run_example(bc,point_loads,distributed_load,uc)
+uc='2L_cf_pl'
+point_loads = [(2*L, -2*L*A*rho*g)]
+res[uc]=run_example(bc,point_loads,distributed_load,uc,L=2*L)
 # %% Own weight with simple supports
 def bc(ya,yb):
     return np.array([
@@ -225,5 +209,7 @@ def bc(ya,yb):
 supports = None
 point_loads = None
 distributed_load = lambda x: -A*rho*g*np.ones_like(x)
-run_example(bc,point_loads,distributed_load)
-
+uc='ss_dl'
+res[uc]=run_example(bc,point_loads,distributed_load,uc)
+uc='2L_ss_dl'
+res[uc]=run_example(bc,point_loads,distributed_load,uc,L=2*L)
