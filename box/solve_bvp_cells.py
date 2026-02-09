@@ -68,7 +68,7 @@ def beam_bending_with_elastic_supports(bc,L=L, fun=None,
                                ec=None,gd=None,b=None,        
                                point_loads=None, 
                                q_func=None,
-                               n_points=50):
+                               n_points=10):
     can_provide_total_load=False
     if fun is None:
         can_provide_total_load=True
@@ -109,14 +109,14 @@ def beam_bending_with_elastic_supports(bc,L=L, fun=None,
 def run_example(bc,point_loads=None,
                 gd=None,b=None,
                 distributed_load=None,uc=None,L=L,fun=None,q=None,
-                n_points=50):
+                n_solve=10,n_plot=50):
     (res, xs, q_total, total_load) = (
         beam_bending_with_elastic_supports(
         bc, L=L, ec=E*Ixx,gd=gd,b=b,
         point_loads=point_loads,
         q_func=distributed_load,
         fun=fun,
-        n_points=n_points
+        n_points=n_solve
     ))
     if q_total:
         q_plot=q_total
@@ -125,7 +125,11 @@ def run_example(bc,point_loads=None,
     if not res.success:
         raise Exception(f"solution failed, {res.message}")
     w_plot, theta_plot,M_plot, V_plot = [], [], [], []
-    for x in xs:
+    if n_solve == n_plot:
+        px=xs
+    else:
+        px=np.linspace(0,L,n_plot)
+    for x in px:
         y, dy, M, V = res.sol(x)
         w_plot.append(y)
         theta_plot.append(dy)
@@ -253,4 +257,4 @@ def fun(x, y):
     dy4 = (q(x) - k * y1) / (E*Ixx)
     return np.vstack((dy1, dy2, dy3, dy4))
 uc='cf_dl_s@0.8L'
-res[uc]=run_example(bc,uc=uc,fun=fun,q=q,n_points=300)
+res[uc]=run_example(bc,uc=uc,fun=fun,q=q)
