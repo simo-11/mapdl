@@ -108,13 +108,15 @@ def beam_bending_with_elastic_supports(bc,L=L, fun=None,
 
 def run_example(bc,point_loads=None,
                 gd=None,b=None,
-                distributed_load=None,uc=None,L=L,fun=None,q=None):
+                distributed_load=None,uc=None,L=L,fun=None,q=None,
+                n_points=50):
     (res, xs, q_total, total_load) = (
         beam_bending_with_elastic_supports(
         bc, L=L, ec=E*Ixx,gd=gd,b=b,
         point_loads=point_loads,
         q_func=distributed_load,
-        fun=fun
+        fun=fun,
+        n_points=n_points
     ))
     if q_total:
         q_plot=q_total
@@ -188,7 +190,7 @@ point_loads=None
 distributed_load = lambda x: -A*rho*g*np.ones_like(x)
 uc='cf_dl'
 res[uc]=run_example(bc,
-                    distributed_load=distributed_load,uc=uc,gd=0,b=0)
+                    distributed_load=distributed_load,uc=uc)
 # %% Clamped beam with load at free end
 def bc(ya,yb):
     return np.array([
@@ -225,18 +227,30 @@ def bc(ya,yb):
         ya[0],# displacement(0)=0
         ya[1],# rotation'(0)=0
         yb[2],# moment''(L)=0
+        yb[0] # displacement(L)=0
+    ])
+uc='cf_dl_s@L'
+distributed_load = lambda x: -A*rho*g*np.ones_like(x)
+res[uc]=run_example(bc,distributed_load=distributed_load,uc=uc)
+# %% Clamped beam with own weight and displacement support at x=0.8*L
+def bc(ya,yb):
+    return np.array([
+        ya[0],# displacement(0)=0
+        ya[1],# rotation'(0)=0
+        yb[2],# moment''(L)=0
         yb[3] # shear'''(L)=0
     ])
 ks=-A*rho*g*L/1e-6# Total load will cause at most 1e-6 displacement
 def q(x):
     return -A*rho*g*np.ones_like(x)
 def fun(x, y):
-    k = np.where(x > 2*L, ks, 0) 
+    mask = (x >= 0.799*L) & (x<=0.801*L)
+    k = np.where(mask, ks, 0) 
     y1, y2, y3, y4 = y
     dy1 = y2
     dy2 = y3
     dy3 = y4
-    dy4 = (q(x) - k * y1) / E*Ixx
+    dy4 = (q(x) - k * y1) / (E*Ixx)
     return np.vstack((dy1, dy2, dy3, dy4))
-uc='cf_dl_s@L'
-res[uc]=run_example(bc,uc=uc,fun=fun,q=q)
+uc='cf_dl_s@0.8L'
+res[uc]=run_example(bc,uc=uc,fun=fun,q=q,n_points=300)
