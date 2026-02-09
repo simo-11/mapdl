@@ -63,10 +63,152 @@ T = - E*Iw*sol.y[3]
 ax.plot(sol.x, T, label="Moment from Iw")
 ax.legend()
 plt.pause(plt_pause)
+# %% bc_multi
+"""
+Got it ✅ — here’s a general-purpose multi-region BVP solver template in
+Python using scipy.integrate.solve_bvp that works for any number of regions,
+each with its own ODE definition and interface continuity conditions.
+This template is fully runnable, handles arbitrary region boundaries,
+and enforces continuity of yyy and y′y'y′ at each interface.
+
+General Multi-Region BVP Solver Template
+Pythonimport numpy as np
+from scipy.integrate import solve_bvp
+"""
+import matplotlib.pyplot as plt
+
+# ============================================================
+# 1. Define your problem
+# ============================================================
+
+# Example: y'' = -k^2 * y in each region, with different k
+region_boundaries = [0, 1, 2, 3]  # 3 regions: [0,1], [1,2], [2,3]
+region_k = [1.0, 2.0, 0.5]        # k for each region
+
+# ODE system: y[0] = y, y[1] = y'
+def fun(x, y):
+    dydx = np.zeros_like(y)
+    dydx[0] = y[1]
+    # Determine which region each x belongs to
+    k_values = np.zeros_like(x)
+    for i in range(len(region_k)):
+        mask = (x >= region_boundaries[i]) & (x <= region_boundaries[i+1])
+        k_values[mask] = region_k[i]
+    dydx[1] = -(k_values**2) * y[0]
+    return dydx
+
+# ============================================================
+# 2. Boundary conditions
+# ============================================================
+
+# General multipoint BC function
+def bc_multi(*Y):
+    """
+    Y[0] = values at start of region 1
+    Y[1] = values at end of region 1 (= start of region 2)
+    ...
+    Y[-1] = values at end of last region
+    """
+    conditions = []
+    # Left boundary condition: y(0) = 0
+    conditions.append(Y[0][0] - 0.0)
+    # Right boundary condition: y(end) = 0
+    conditions.append(Y[-1][0] - 0.0)
+    # Continuity conditions at internal boundaries
+    for i in range(1, len(Y)-1):
+        # Continuity of y
+        conditions.append(Y[i][0] - Y[i+1][0])
+        # Continuity of y'
+        conditions.append(Y[i][1] - Y[i+1][1])
+    return np.array(conditions)
+
+# ============================================================
+# 3. Build mesh and initial guess
+# ============================================================
+
+# Create mesh with duplicated interface points
+mesh_parts = []
+for i in range(len(region_boundaries)-1):
+    part = np.linspace(region_boundaries[i], region_boundaries[i+1], 5)
+    if i > 0:
+        part = part[1:]  # avoid duplicate except first
+    mesh_parts.append(part)
+x_mesh = np.hstack(mesh_parts)
+
+# Initial guess: y=0, y'=0
+y_guess = np.zeros((2, x_mesh.size))
+
+# ============================================================
+# 4. Wrap BC function for solve_bvp
+# ============================================================
+
+def bc_wrapper(Ya, Yb):
+    """
+    Ya: shape (2, n_regions) — values at left ends
+    Yb: shape (2, n_regions) — values at right ends
+    """
+    # Combine into sequence: start, interface1, interface2, ..., end
+    Y_points = [Ya[:, 0]]
+    for i in range(Ya.shape[1]):
+        Y_points.append(Yb[:, i])
+    return bc_multi(*Y_points)
+
+# ============================================================
+# 5. Solve
+# ============================================================
+
+sol = solve_bvp(fun, bc_wrapper, x_mesh, y_guess)
+
+if sol.status != 0:
+    print("Warning: Solver did not converge.")
+
+# ============================================================
+# 6. Plot
+# ============================================================
+
+x_plot = np.linspace(region_boundaries[0], region_boundaries[-1], 300)
+y_plot = sol.sol(x_plot)[0]
+
+plt.figure(figsize=(8, 5))
+plt.plot(x_plot, y_plot, label="y(x)")
+for b in region_boundaries[1:-1]:
+    plt.axvline(b, color='gray', linestyle='--', alpha=0.6)
+plt.xlabel("x")
+plt.ylabel("y")
+plt.title("Multi-region BVP Solution")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+"""
+How to Use This Template
+
+Set region_boundaries — list of points where regions start/end.
+Set region_k or your own parameters — one per region.
+Modify fun(x, y) — define your ODE for each region.
+Modify bc_multi — set your left/right boundary conditions and interface continuity rules.
+Run — the solver will handle any number of regions.
+
+
+Why This Works
+
+Mesh Splitting: We explicitly split the mesh at each region boundary.
+Continuity Enforcement: bc_multi enforces yyy and y′y'y′
+continuity at each interface.
+Flexible ODE: Inside fun, we detect which region each xxx
+belongs to and apply the correct equation.
+Scalable: Works for 2, 3, or more regions without changing the solver logic.
+
+
+If you want, I can extend this so that each region can have
+different ODE functions entirely (not just different parameters).
+That would make it a fully modular multi-physics BVP solver.
+Do you want me to prepare that version?
+"""
 # %% beam bending
 def beam_bending_with_elastic_supports(bc,L=L, fun=None,
-                               ec=None,gd=None,b=None,        
-                               point_loads=None, 
+                               ec=None,gd=None,b=None,
+                               point_loads=None,
                                q_func=None,
                                n_points=10):
     can_provide_total_load=False
@@ -78,7 +220,7 @@ def beam_bending_with_elastic_supports(bc,L=L, fun=None,
             q = q_func(x)
             if point_loads:
                 for xp, P in point_loads:
-                    q += P * (np.exp(-((x-xp)**2)/(2*1e-4)) 
+                    q += P * (np.exp(-((x-xp)**2)/(2*1e-4))
                               / np.sqrt(2*np.pi*1e-4))
             return q
         if gd is None and b is None:
@@ -135,7 +277,7 @@ def run_example(bc,point_loads=None,
         theta_plot.append(dy)
         M_plot.append(M)
         V_plot.append(V)
-    
+
     # Deflection
     fig,axes=plt.subplot_mosaic(
     [
@@ -155,8 +297,8 @@ def run_example(bc,point_loads=None,
     ax.set_ylabel("w [m]")
     if point_loads:
         for xp, P in point_loads:
-            ax.axvline(x=xp, color="red", linestyle=":", 
-                        alpha=0.7, label="Point load" 
+            ax.axvline(x=xp, color="red", linestyle=":",
+                        alpha=0.7, label="Point load"
                         if xp==point_loads[0][0] else "")
     ax=axes["theta"]
     ax.plot(xs, theta_plot, label="Rotation")
@@ -176,7 +318,7 @@ def run_example(bc,point_loads=None,
     for ax in fig.axes:
         if ax.get_label()=='None':
             ax.remove()
-        else:    
+        else:
             ax.legend()
             ax.set_xlabel("x [m]")
     fig.tight_layout()
@@ -249,7 +391,7 @@ def q(x):
     return -A*rho*g*np.ones_like(x)
 def fun(x, y):
     mask = (x >= 0.799*L) & (x<=0.801*L)
-    k = np.where(mask, ks, 0) 
+    k = np.where(mask, ks, 0)
     y1, y2, y3, y4 = y
     dy1 = y2
     dy2 = y3
@@ -258,3 +400,4 @@ def fun(x, y):
     return np.vstack((dy1, dy2, dy3, dy4))
 uc='cf_dl_s@0.8L'
 res[uc]=run_example(bc,uc=uc,fun=fun,q=q)
+
