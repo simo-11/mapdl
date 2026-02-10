@@ -63,20 +63,14 @@ T = - E*Iw*sol.y[3]
 ax.plot(sol.x, T, label="Moment from Iw")
 ax.legend()
 plt.pause(plt_pause)
-# %% bc_multi
+# %% bc_multi sample
 """
+By AI
 Got it ✅ — here’s a general-purpose multi-region BVP solver template in
 Python using scipy.integrate.solve_bvp that works for any number of regions,
 each with its own ODE definition and interface continuity conditions.
 This template is fully runnable, handles arbitrary region boundaries,
 and enforces continuity of yyy and y′y'y′ at each interface.
-
-General Multi-Region BVP Solver Template
-Pythonimport numpy as np
-from scipy.integrate import solve_bvp
-"""
-import matplotlib.pyplot as plt
-
 # ============================================================
 # 1. Define your problem
 # ============================================================
@@ -103,12 +97,10 @@ def fun(x, y):
 
 # General multipoint BC function
 def bc_multi(*Y):
-    """
-    Y[0] = values at start of region 1
-    Y[1] = values at end of region 1 (= start of region 2)
-    ...
-    Y[-1] = values at end of last region
-    """
+    # Y[0] = values at start of region 1
+    # Y[1] = values at end of region 1 (= start of region 2)
+    # ...
+    #Y[-1] = values at end of last region
     conditions = []
     # Left boundary condition: y(0) = 0
     conditions.append(Y[0][0] - 0.0)
@@ -121,7 +113,6 @@ def bc_multi(*Y):
         # Continuity of y'
         conditions.append(Y[i][1] - Y[i+1][1])
     return np.array(conditions)
-
 # ============================================================
 # 3. Build mesh and initial guess
 # ============================================================
@@ -141,18 +132,14 @@ y_guess = np.zeros((2, x_mesh.size))
 # ============================================================
 # 4. Wrap BC function for solve_bvp
 # ============================================================
-
 def bc_wrapper(Ya, Yb):
-    """
-    Ya: shape (2, n_regions) — values at left ends
-    Yb: shape (2, n_regions) — values at right ends
-    """
+    #    Ya: shape (2, n_regions) — values at left ends
+    #    Yb: shape (2, n_regions) — values at right ends
     # Combine into sequence: start, interface1, interface2, ..., end
     Y_points = [Ya[:, 0]]
     for i in range(Ya.shape[1]):
         Y_points.append(Yb[:, i])
     return bc_multi(*Y_points)
-
 # ============================================================
 # 5. Solve
 # ============================================================
@@ -180,13 +167,13 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-"""
 How to Use This Template
 
 Set region_boundaries — list of points where regions start/end.
 Set region_k or your own parameters — one per region.
 Modify fun(x, y) — define your ODE for each region.
-Modify bc_multi — set your left/right boundary conditions and interface continuity rules.
+Modify bc_multi — set your left/right boundary conditions
+ and interface continuity rules.
 Run — the solver will handle any number of regions.
 
 
@@ -378,7 +365,8 @@ def bc(ya,yb):
 uc='cf_dl_s@L'
 distributed_load = lambda x: -A*rho*g*np.ones_like(x)
 res[uc]=run_example(bc,distributed_load=distributed_load,uc=uc)
-# %% Clamped beam with own weight and displacement support at x=0.8*L
+# %% Clamped beam with own weight and stiff spring at x=0.8*L
+# This is not working properly
 def bc(ya,yb):
     return np.array([
         ya[0],# displacement(0)=0
@@ -398,6 +386,17 @@ def fun(x, y):
     dy3 = y4
     dy4 = (q(x) - k * y1) / (E*Ixx)
     return np.vstack((dy1, dy2, dy3, dy4))
-uc='cf_dl_s@0.8L'
+uc='cf_dl_ss@0.8L'
 res[uc]=run_example(bc,uc=uc,fun=fun,q=q)
+# %% Clamped beam with own weight and displacement support at x=0.8*L
+def bc(ya,yb):
+    return np.array([
+        ya[0],# displacement(0)=0
+        ya[1],# rotation'(0)=0
+        yb[2],# moment''(L)=0
+        yb[0] # displacement(L)=0
+    ])
+uc='cf_dl_ds@L'
+dl = lambda x: -A*rho*g*np.ones_like(x)
+res[uc]=run_example(bc,distributed_load=dl,uc=uc)
 
